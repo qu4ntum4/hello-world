@@ -6,7 +6,8 @@
  */
 
 const STORAGE_KEY = 'compagnon.etat.v1';
-const KEY_STORAGE_KEY = 'compagnon.cle.v1';
+const KEY_STORAGE_KEY = 'compagnon.cle.v1'; // ancienne clé unique (migrée)
+const KEYS_STORAGE_KEY = 'compagnon.cles.v1'; // { fournisseur: clé }
 const MAX_MESSAGES = 80;
 const MAX_FAITS = 120;
 const MAX_JOURNAL = 40;
@@ -69,7 +70,9 @@ function etatInitial() {
     conversation: [],
     // --- réglages ---
     reglages: {
+      fournisseur: 'anthropic',
       modele: 'claude-opus-5',
+      basePersonnalisee: '',
       effort: 'low',
       voix: true,
       nomVoix: null,
@@ -173,24 +176,48 @@ export class Memoire {
     }
   }
 
-  // --------------------------------------------------------- clé API séparée
+  // ------------------------------------------------------ clés API séparées
 
-  /** La clé est stockée à part pour pouvoir l'effacer sans perdre la mémoire. */
-  get cleApi() {
+  /**
+   * Les clés vivent hors de l'état : on peut les effacer sans perdre la mémoire,
+   * et l'export JSON de la mémoire n'en contient aucune. Une clé par
+   * fournisseur, pour pouvoir passer de l'un à l'autre sans les ressaisir.
+   */
+  _lireCles() {
+    let cles = {};
     try {
-      return localStorage.getItem(KEY_STORAGE_KEY) || '';
+      cles = JSON.parse(localStorage.getItem(KEYS_STORAGE_KEY) || '{}');
+      // Migration depuis l'époque où il n'y avait qu'une clé, Anthropic.
+      const ancienne = localStorage.getItem(KEY_STORAGE_KEY);
+      if (ancienne && !cles.anthropic) {
+        cles.anthropic = ancienne;
+        localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(cles));
+        localStorage.removeItem(KEY_STORAGE_KEY);
+      }
     } catch {
-      return '';
+      return {};
     }
+    return cles && typeof cles === 'object' ? cles : {};
   }
 
-  set cleApi(valeur) {
+  cle(fournisseur) {
+    return this._lireCles()[fournisseur] || '';
+  }
+
+  definirCle(fournisseur, valeur) {
     try {
-      if (valeur) localStorage.setItem(KEY_STORAGE_KEY, valeur);
-      else localStorage.removeItem(KEY_STORAGE_KEY);
+      const cles = this._lireCles();
+      if (valeur) cles[fournisseur] = valeur;
+      else delete cles[fournisseur];
+      localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(cles));
     } catch (err) {
       console.warn('Clé API non persistée.', err);
     }
+  }
+
+  /** Clé du fournisseur actuellement sélectionné. */
+  get cleCourante() {
+    return this.cle(this.etat.reglages.fournisseur);
   }
 
   // ------------------------------------------------------------ ouverture de session

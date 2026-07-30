@@ -4,7 +4,8 @@
 
 import { Memoire, NOMS_NIVEAUX, formaterDuree } from './memory.js';
 import { Avatar } from './avatar3d.js';
-import { Cerveau, MODELES } from './brain.js';
+import { Cerveau } from './brain.js';
+import { FOURNISSEURS } from './providers.js';
 import { Voix, Micro } from './voice.js';
 import { VieAutonome } from './life.js';
 
@@ -35,7 +36,17 @@ const el = {
   btnAccueilOk: $('btn-accueil-ok'),
   btnAccueilPlusTard: $('btn-accueil-plus-tard'),
   cleApi: $('cle-api'),
+  fournisseur: $('fournisseur'),
+  noteFournisseur: $('note-fournisseur'),
+  lienCles: $('lien-cles'),
+  lienModeles: $('lien-modeles'),
+  baseApi: $('base-api'),
+  labelBase: $('label-base'),
+  labelEffort: $('label-effort'),
   modele: $('modele'),
+  suggestions: $('modeles-suggeres'),
+  fournisseurAccueil: $('fournisseur-accueil'),
+  noteAccueil: $('note-accueil'),
   effort: $('effort'),
   voixChoisie: $('voix-choisie'),
   optVoix: $('opt-voix'),
@@ -300,19 +311,63 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !el.tiroir.hidden) fermerTiroir();
 });
 
-function rendreReglages() {
-  el.cleApi.value = memoire.cleApi;
-
-  if (!el.modele.options.length) {
-    for (const m of MODELES) {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = `${m.nom} — ${m.note}`;
-      el.modele.appendChild(opt);
-    }
+/** Remplit un <select> avec la liste des fournisseurs. */
+function garnirFournisseurs(select) {
+  if (select.options.length) return;
+  for (const [cle, f] of Object.entries(FOURNISSEURS)) {
+    const opt = document.createElement('option');
+    opt.value = cle;
+    opt.textContent = f.gratuit ? `${f.nom} — gratuit : ${f.gratuit}` : f.nom;
+    select.appendChild(opt);
   }
-  el.modele.value = memoire.etat.reglages.modele;
-  el.effort.value = memoire.etat.reglages.effort;
+}
+
+/** Une phrase honnête sur ce que vaut ce fournisseur ici. */
+function noteFournisseur(cle) {
+  const f = FOURNISSEURS[cle];
+  const cors = {
+    'vérifié': "Appels navigateur vérifiés.",
+    'documenté': "Appels navigateur annoncés par le fournisseur, non vérifiés ici.",
+    'inconnu': "Appels navigateur non vérifiés : si ça échoue, c'est le CORS.",
+    'à configurer': '',
+  }[f.cors] || '';
+  return [f.note, cors].filter(Boolean).join(' ');
+}
+
+function rendreReglages() {
+  const r = memoire.etat.reglages;
+  garnirFournisseurs(el.fournisseur);
+  el.fournisseur.value = r.fournisseur;
+
+  const f = FOURNISSEURS[r.fournisseur] || FOURNISSEURS.anthropic;
+  el.cleApi.value = memoire.cleCourante;
+  el.cleApi.placeholder = r.fournisseur === 'local' ? 'aucune clé nécessaire' : 'clé API';
+  el.noteFournisseur.textContent = noteFournisseur(r.fournisseur);
+
+  el.lienCles.href = f.cles || '#';
+  el.lienCles.hidden = !f.cles;
+  el.lienModeles.href = f.listeModeles || f.cles || '#';
+  el.lienModeles.hidden = !(f.listeModeles || f.cles);
+
+  // L'adresse n'est modifiable que là où elle a un sens.
+  const baseVisible = r.fournisseur === 'personnalise' || r.fournisseur === 'local';
+  el.baseApi.hidden = !baseVisible;
+  el.labelBase.hidden = !baseVisible;
+  el.baseApi.value = r.basePersonnalisee || f.base || '';
+
+  // `effort` est propre à Anthropic.
+  const effortVisible = f.dialecte === 'anthropic';
+  el.effort.hidden = !effortVisible;
+  el.labelEffort.hidden = !effortVisible;
+
+  el.suggestions.innerHTML = '';
+  for (const m of f.modeles) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    el.suggestions.appendChild(opt);
+  }
+  el.modele.value = r.modele || f.modeleParDefaut;
+  el.effort.value = r.effort;
   el.optVoix.checked = memoire.etat.reglages.voix;
   el.optMicro.checked = memoire.etat.reglages.micro;
   el.optAutonomie.checked = memoire.etat.reglages.autonomie;
@@ -338,12 +393,32 @@ function rendreReglages() {
 
 el.cleApi.addEventListener('change', () => {
   const cle = el.cleApi.value.trim();
-  memoire.cleApi = cle;
+  memoire.definirCle(memoire.etat.reglages.fournisseur, cle);
   cerveau.configurer(cle);
 });
 
+el.fournisseur.addEventListener('change', () => {
+  const r = memoire.etat.reglages;
+  const f = FOURNISSEURS[el.fournisseur.value];
+  r.fournisseur = el.fournisseur.value;
+  // Changer de fournisseur remet un modèle valide et efface une adresse
+  // héritée du précédent, sinon on part avec des réglages incohérents.
+  r.modele = f.modeleParDefaut;
+  r.basePersonnalisee = '';
+  memoire.sauver();
+  cerveau.configurer(memoire.cleCourante);
+  rendreReglages();
+  ajouterBulle('systeme', `Il écoute maintenant ${f.nom}.`);
+});
+
+el.baseApi.addEventListener('change', () => {
+  memoire.etat.reglages.basePersonnalisee = el.baseApi.value.trim();
+  memoire.sauver();
+  cerveau.configurer(memoire.cleCourante);
+});
+
 el.modele.addEventListener('change', () => {
-  memoire.etat.reglages.modele = el.modele.value;
+  memoire.etat.reglages.modele = el.modele.value.trim();
   memoire.sauver();
 });
 
@@ -545,17 +620,26 @@ function demarrer() {
 }
 
 // Clé déjà connue → on démarre. Sinon, on demande.
-if (memoire.cleApi) {
-  cerveau.configurer(memoire.cleApi);
+if (memoire.cleCourante || memoire.etat.reglages.fournisseur === 'local') {
+  cerveau.configurer(memoire.cleCourante);
   demarrer();
 } else {
   el.accueil.hidden = false;
+  garnirFournisseurs(el.fournisseurAccueil);
+  el.fournisseurAccueil.value = memoire.etat.reglages.fournisseur;
+  el.noteAccueil.textContent = noteFournisseur(el.fournisseurAccueil.value);
+  el.fournisseurAccueil.addEventListener('change', () => {
+    const f = FOURNISSEURS[el.fournisseurAccueil.value];
+    memoire.etat.reglages.fournisseur = el.fournisseurAccueil.value;
+    memoire.etat.reglages.modele = f.modeleParDefaut;
+    memoire.sauver();
+    el.noteAccueil.textContent = noteFournisseur(el.fournisseurAccueil.value);
+    el.cleAccueil.value = memoire.cleCourante;
+  });
   el.btnAccueilOk.addEventListener('click', () => {
     const cle = el.cleAccueil.value.trim();
-    if (cle) {
-      memoire.cleApi = cle;
-      cerveau.configurer(cle);
-    }
+    if (cle) memoire.definirCle(memoire.etat.reglages.fournisseur, cle);
+    cerveau.configurer(cle);
     el.accueil.hidden = true;
     demarrer();
   });

@@ -54,19 +54,32 @@
 
   <section class="panneau" id="panneau-reglages">
     <h3>Connexion</h3>
-    <label for="cle-api">Clé API Anthropic</label>
-    <input type="password" id="cle-api" placeholder="sk-ant-…" spellcheck="false">
+    <label for="fournisseur">Fournisseur</label>
+    <select id="fournisseur"></select>
+    <p class="aide" id="note-fournisseur"></p>
+
+    <label for="cle-api">Clé API</label>
+    <input type="password" id="cle-api" placeholder="…" spellcheck="false">
     <p class="aide">
-      Elle reste dans <em>ce</em> navigateur et part directement vers
-      <code>api.anthropic.com</code>. Aucun serveur intermédiaire — donc à n'utiliser
-      que sur une machine qui t'appartient.
-      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Créer une clé</a>
+      Elle reste dans <em>ce</em> navigateur et part directement vers l'API.
+      Aucun serveur intermédiaire — donc à n'utiliser que sur une machine qui
+      t'appartient. Une clé est mémorisée par fournisseur.
+      <a id="lien-cles" href="#" target="_blank" rel="noopener">Obtenir une clé</a>
     </p>
 
-    <label for="modele">Modèle</label>
-    <select id="modele"></select>
+    <label for="base-api" id="label-base">Adresse de l'API</label>
+    <input type="text" id="base-api" placeholder="https://…/v1" spellcheck="false">
 
-    <label for="effort">Profondeur de réflexion</label>
+    <label for="modele">Modèle</label>
+    <input type="text" id="modele" list="modeles-suggeres" spellcheck="false">
+    <datalist id="modeles-suggeres"></datalist>
+    <p class="aide">
+      Les identifiants de modèles changent souvent : si tu as une erreur
+      « modèle inconnu », prends le nom exact chez le fournisseur.
+      <a id="lien-modeles" href="#" target="_blank" rel="noopener">Voir la liste</a>
+    </p>
+
+    <label for="effort" id="label-effort">Profondeur de réflexion</label>
     <select id="effort">
       <option value="low">Basse — répond vite (recommandé)</option>
       <option value="medium">Moyenne</option>
@@ -125,15 +138,14 @@
   <div class="carte">
     <h2>Avant de le réveiller</h2>
     <p>
-      Ce compagnon est piloté par Claude. Il lui faut ta clé API Anthropic : elle est
-      enregistrée <strong>dans ce navigateur uniquement</strong> et envoyée directement
-      à <code>api.anthropic.com</code>.
+      Choisis l'IA qui l'anime, puis colle ta clé : elle est enregistrée
+      <strong>dans ce navigateur uniquement</strong> et envoyée directement à l'API.
     </p>
-    <input type="password" id="cle-accueil" placeholder="sk-ant-…" spellcheck="false">
+    <select id="fournisseur-accueil"></select>
+    <input type="password" id="cle-accueil" placeholder="clé API" spellcheck="false">
+    <p class="aide" id="note-accueil"></p>
     <p class="aide">
-      Pas de clé ?
-      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
-      Tu peux aussi entrer sans : il bougera, mais restera muet.
+      Tu peux aussi entrer sans clé : il bougera, mais restera muet.
     </p>
     <div class="rangee">
       <button type="button" class="bouton primaire" id="btn-accueil-ok">Le réveiller</button>

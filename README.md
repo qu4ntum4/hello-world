@@ -21,16 +21,58 @@ fichier directement ne marche pas (les modules ES exigent `http://`) :
 python3 -m http.server 8000   # puis http://localhost:8000
 ```
 
-Au premier lancement, il demande une **clé API Anthropic**
-([console.anthropic.com](https://console.anthropic.com/settings/keys)). Sans
-clé, il apparaît et bouge, mais reste muet.
+Au premier lancement, il demande **quelle IA doit l'animer** et la clé
+correspondante. Sans clé, il apparaît et bouge, mais reste muet.
+
+## Choisir l'IA
+
+Le compagnon n'est pas lié à un fournisseur. Deux dialectes couvrent tout :
+l'API Messages d'Anthropic, et `/chat/completions` que presque tous exposent.
+Le fournisseur se change à chaud dans les réglages ; une clé est mémorisée par
+fournisseur.
+
+Deux contraintes filtrent les options, et les comparatifs génériques les
+ignorent : la page appelle l'API **directement depuis le navigateur** (il faut
+donc que le fournisseur autorise le CORS), et le compagnon a besoin du
+**function calling en streaming** pour piloter ses gestes.
+
+| Fournisseur | Gratuit | Navigateur | Pour cette app |
+| --- | --- | --- | --- |
+| **Google Gemini** | 15 req/min, 1500/jour, permanent | ✅ vérifié par test | **Le meilleur choix gratuit** |
+| **Groq** | ~30 req/min | documenté | Le plus rapide ; tous les modèles ne gèrent pas les outils |
+| **OpenRouter** | modèles `:free`, 20 req/min | documenté | Une clé, des centaines de modèles — **dont Kimi** |
+| **Cerebras** | ~1 M tokens/jour | non vérifié | Gros volume |
+| **Moonshot (Kimi)** | crédit d'essai, **3 req/min** | non vérifié | Trop contraint : passe par OpenRouter |
+| **Mistral** | palier expérimental | non vérifié | Prototypage |
+| **Anthropic** | — (payant) | ✅ vérifié | Le plus incarné |
+| **Ollama / LM Studio** | total | à configurer | Rien ne quitte ta machine |
+
+« Vérifié par test » signifie que le préflight CORS a été exécuté et que la
+réponse autorise l'origine. « Documenté » vient de la documentation du
+fournisseur. Les paliers gratuits et les identifiants de modèles bougent vite —
+en cas d'erreur « modèle inconnu », prends le nom exact chez le fournisseur.
+
+### Faire tourner un modèle local
+
+Ollama refuse par défaut les appels venant d'une page web. Il faut l'autoriser
+puis le relancer :
+
+```sh
+OLLAMA_ORIGINS='https://qu4ntum4.github.io,http://localhost:8000' ollama serve
+ollama pull qwen3:8b   # choisis un modèle qui sait appeler des outils
+```
+
+Une page servie en HTTPS peut appeler `http://localhost` — les navigateurs
+considèrent localhost comme sûr — mais pas un serveur en HTTP sur une autre
+machine.
 
 ### Sur la clé API — à lire avant de publier la page
 
-La clé est enregistrée dans le `localStorage` de votre navigateur et envoyée
-**directement** à `api.anthropic.com` depuis la page (en-tête
-`anthropic-dangerous-direct-browser-access`). Il n'y a aucun serveur
-intermédiaire, donc aucun endroit où la clé pourrait être cachée.
+Les clés sont enregistrées dans le `localStorage` de votre navigateur et
+envoyées **directement** à l'API choisie depuis la page. Il n'y a aucun serveur
+intermédiaire, donc aucun endroit où une clé pourrait être cachée. (Elles sont
+stockées hors de l'état du compagnon : l'export JSON de sa mémoire n'en contient
+aucune.)
 
 Concrètement :
 
@@ -88,7 +130,8 @@ JSON (utile : vider les données du site l'efface définitivement).
 index.html          structure de la page
 styles.css          interface ; --teinte / --accent suivent l'humeur
 js/avatar3d.js      corps, visage, animation trois couches (base · humeur · gestes)
-js/brain.js         connexion Claude : outils, streaming, prompt système
+js/brain.js         orchestration : outils, prompt système, streaming
+js/providers.js     registre des fournisseurs + adaptateur compatible OpenAI
 js/memory.js        état persistant, dérive de l'humeur, import/export
 js/voice.js         synthèse vocale et reconnaissance vocale du navigateur
 js/life.js          vie autonome : ennui, sommeil, prises de parole spontanées
@@ -121,11 +164,12 @@ saluer_timidement: {
 
 ## Réglages
 
-- **Modèle** — Claude Opus 5 par défaut (le plus incarné), Sonnet 5 ou
-  Haiku 4.5 pour aller plus vite et moins cher.
-- **Profondeur de réflexion** — `low` par défaut : une conversation n'a pas
-  besoin de plus, et la latence compte. La réflexion reste *activée* (la
-  désactiver rend les appels d'outils peu fiables sur Opus 5).
+- **Fournisseur et modèle** — voir *Choisir l'IA* plus haut. Le champ modèle
+  est libre : les suggestions ne sont qu'un point de départ.
+- **Profondeur de réflexion** — propre à Anthropic, masqué ailleurs. `low` par
+  défaut : une conversation n'a pas besoin de plus, et la latence compte. La
+  réflexion reste *activée* (la désactiver rend les appels d'outils peu fiables
+  sur Opus 5).
 - **Autonomie** — ses prises de parole spontanées sont bornées : une toutes les
   2 min 30 au plus, douze par session, jamais quand l'onglet est en arrière-plan.
 

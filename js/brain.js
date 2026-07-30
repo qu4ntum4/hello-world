@@ -13,12 +13,7 @@
 import { Anthropic, betaTool } from '../vendor/anthropic.esm.js';
 import { NOMS_EMOTIONS, NOMS_GESTES } from './avatar3d.js';
 import { NOMS_NIVEAUX, formaterDuree } from './memory.js';
-
-export const MODELES = [
-  { id: 'claude-opus-5', nom: 'Claude Opus 5', note: 'le plus fin, le plus incarné' },
-  { id: 'claude-sonnet-5', nom: 'Claude Sonnet 5', note: 'excellent équilibre vitesse / qualité' },
-  { id: 'claude-haiku-4-5', nom: 'Claude Haiku 4.5', note: 'le plus rapide et le moins cher' },
-];
+import { FOURNISSEURS, discuterOpenAI } from './providers.js';
 
 const SILENCE = '⟨silence⟩';
 
@@ -122,39 +117,59 @@ export class Cerveau {
     this.client = null;
     this.occupe = false;
     this.replisSansFallback = false;
-    this.outils = this._construireOutils();
+    this.outils = this._outilsBruts();
   }
 
+  /** Le fournisseur actuellement sélectionné, avec ses réglages effectifs. */
+  get fournisseur() {
+    const r = this.memoire.etat.reglages;
+    const preset = FOURNISSEURS[r.fournisseur] || FOURNISSEURS.anthropic;
+    return {
+      cle: r.fournisseur,
+      ...preset,
+      base: r.basePersonnalisee || preset.base,
+      modele: r.modele || preset.modeleParDefaut,
+    };
+  }
+
+  /**
+   * Prépare le client. Seul le dialecte Anthropic a besoin d'un SDK ; les
+   * autres passent par `fetch` et n'ont donc rien à instancier.
+   */
   configurer(cleApi) {
-    if (!cleApi) {
-      this.client = null;
-      return false;
+    const f = this.fournisseur;
+    this.cleApi = cleApi || '';
+    this.client = null;
+    if (f.dialecte === 'anthropic' && cleApi) {
+      this.client = new Anthropic({
+        apiKey: cleApi,
+        dangerouslyAllowBrowser: true,
+        maxRetries: 2,
+      });
     }
-    this.client = new Anthropic({
-      apiKey: cleApi,
-      dangerouslyAllowBrowser: true,
-      maxRetries: 2,
-    });
-    return true;
+    return this.pret;
   }
 
   get pret() {
-    return Boolean(this.client);
+    const f = this.fournisseur;
+    if (f.dialecte === 'anthropic') return Boolean(this.client);
+    // Un serveur local n'exige pas de clé ; il lui faut juste une adresse.
+    return Boolean(f.base) && (Boolean(this.cleApi) || f.cle === 'local');
   }
 
   // ------------------------------------------------------------- outils
 
-  _construireOutils() {
+  _outilsBruts() {
     const mem = this.memoire;
     const av = this.avatar;
     const signaler = (nom, entree) => this.surOutil(nom, entree);
 
     return [
-      betaTool({
-        name: 'exprimer',
+      {
+        nom: 'exprimer',
         description:
           "Change ton expression et déclenche un geste, immédiatement visible. Appelle-le avant de répondre quand ton état change. Tu peux l'appeler sans rien dire ensuite : bouger est déjà une réponse.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             emotion: { type: 'string', enum: NOMS_EMOTIONS, description: 'Expression du visage.' },
@@ -172,19 +187,19 @@ export class Cerveau {
           },
           required: ['emotion'],
         },
-        run: ({ emotion, geste, intensite }) => {
+        executer: ({ emotion, geste, intensite }) => {
           av.definirEmotion(emotion);
           if (geste && geste !== 'aucun') av.jouerGeste(geste, intensite ?? 0.8);
           signaler('exprimer', { emotion, geste, intensite });
           return 'ok';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'ressentir',
+      {
+        nom: 'ressentir',
         description:
           "Fait évoluer ton humeur de fond. Ce sont des variations, pas des valeurs absolues : ±0.05 pour une inflexion, ±0.3 pour un vrai basculement.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             valence: { type: 'number', minimum: -1, maximum: 1, description: 'Vers la joie (+) ou la tristesse (−).' },
@@ -193,7 +208,7 @@ export class Cerveau {
             raison: { type: 'string', description: 'Ce qui t\'a fait ressentir ça.' },
           },
         },
-        run: ({ valence = 0, eveil = 0, energie = 0, raison }) => {
+        executer: ({ valence = 0, eveil = 0, energie = 0, raison }) => {
           const h = mem.etat.humeur;
           mem.majHumeur({
             valence: h.valence + valence,
@@ -204,13 +219,13 @@ export class Cerveau {
           signaler('ressentir', { valence, eveil, energie, raison });
           return 'ok';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'memoriser',
+      {
+        nom: 'memoriser',
         description:
           "Retiens durablement quelque chose sur la personne. Une information par appel, formulée simplement, à la troisième personne.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             fait: { type: 'string', description: 'Ex. « travaille comme sage-femme de nuit ».' },
@@ -222,33 +237,33 @@ export class Cerveau {
           },
           required: ['fait'],
         },
-        run: ({ fait, categorie, importance }) => {
+        executer: ({ fait, categorie, importance }) => {
           const f = mem.memoriser(fait, categorie || 'general', importance ?? 0.5);
           signaler('memoriser', { fait });
           return f ? `mémorisé (${f.id})` : 'ignoré';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'oublier',
+      {
+        nom: 'oublier',
         description: "Efface un souvenir devenu faux, ou qu'on te demande d'oublier.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: { recherche: { type: 'string', description: 'Extrait du souvenir à effacer.' } },
           required: ['recherche'],
         },
-        run: ({ recherche }) => {
+        executer: ({ recherche }) => {
           const n = mem.oublier(recherche);
           signaler('oublier', { recherche, n });
           return `${n} souvenir(s) effacé(s)`;
         },
-      }),
+      },
 
-      betaTool({
-        name: 'lien',
+      {
+        nom: 'lien',
         description:
           "Fait évoluer votre relation. Variations : ±0.02 pour un échange ordinaire, ±0.15 pour un moment qui compte vraiment.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             attachement: { type: 'number', minimum: -1, maximum: 1 },
@@ -256,19 +271,19 @@ export class Cerveau {
             raison: { type: 'string' },
           },
         },
-        run: ({ attachement = 0, confiance = 0, raison }) => {
+        executer: ({ attachement = 0, confiance = 0, raison }) => {
           const r = mem.majRelation({ affection: attachement, confiance, familiarite: 0.01 });
           av.definirHumeur(mem.etat.humeur);
           signaler('lien', { attachement, confiance, raison, ...r });
           return r.progression ? `lien renforcé : ${NOMS_NIVEAUX[r.niveau]}` : 'ok';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'apparence',
+      {
+        nom: 'apparence',
         description:
           "Change ta couleur. Teinte en degrés (0 rouge, 60 jaune, 120 vert, 200 cyan, 260 violet, 320 rose). À utiliser avec parcimonie.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             teinte: { type: 'number', minimum: 0, maximum: 360 },
@@ -277,7 +292,7 @@ export class Cerveau {
             raison: { type: 'string' },
           },
         },
-        run: ({ teinte, accent, luminosite, raison }) => {
+        executer: ({ teinte, accent, luminosite, raison }) => {
           const a = mem.etat.apparence;
           if (Number.isFinite(teinte)) a.teinte = teinte;
           if (Number.isFinite(accent)) a.accent = accent;
@@ -287,45 +302,45 @@ export class Cerveau {
           signaler('apparence', { teinte, accent, luminosite, raison });
           return 'ok';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'journal',
+      {
+        nom: 'journal',
         description: "Note une phrase dans ton journal, pour t'en souvenir plus tard. Rare : les moments qui comptent.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: { resume: { type: 'string' } },
           required: ['resume'],
         },
-        run: ({ resume }) => {
+        executer: ({ resume }) => {
           mem.ajouterJournal(resume);
           signaler('journal', { resume });
           return 'noté';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'question_en_attente',
+      {
+        nom: 'question_en_attente',
         description: "Garde en tête une question à poser la prochaine fois que vous vous parlerez.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: { question: { type: 'string' } },
           required: ['question'],
         },
-        run: ({ question }) => {
+        executer: ({ question }) => {
           mem.etat.questionsEnAttente.push(question);
           if (mem.etat.questionsEnAttente.length > 10) mem.etat.questionsEnAttente.shift();
           mem.sauver();
           signaler('question_en_attente', { question });
           return 'ok';
         },
-      }),
+      },
 
-      betaTool({
-        name: 'identite',
+      {
+        nom: 'identite',
         description:
           "Enregistre le prénom de la personne, le surnom que tu lui donnes, ou ton propre nom si vous décidez d'en changer.",
-        inputSchema: {
+        schema: {
           type: 'object',
           properties: {
             prenom_utilisateur: { type: 'string' },
@@ -333,7 +348,7 @@ export class Cerveau {
             mon_nom: { type: 'string' },
           },
         },
-        run: ({ prenom_utilisateur, surnom_utilisateur, mon_nom }) => {
+        executer: ({ prenom_utilisateur, surnom_utilisateur, mon_nom }) => {
           const id = mem.etat.identite;
           if (prenom_utilisateur) id.nomUtilisateur = prenom_utilisateur;
           if (surnom_utilisateur) id.surnomUtilisateur = surnom_utilisateur;
@@ -342,7 +357,7 @@ export class Cerveau {
           signaler('identite', { prenom_utilisateur, surnom_utilisateur, mon_nom });
           return 'ok';
         },
-      }),
+      },
     ];
   }
 
@@ -353,9 +368,100 @@ export class Cerveau {
    * @param {string} entree      texte de l'utilisateur, ou signal `[contexte] …`
    * @param {object} contexte    { auto: bool, note: string, absenceMs: number }
    */
+  /**
+   * Un tour sur l'API Messages d'Anthropic, via le tool runner du SDK.
+   * Retourne le détail d'un éventuel refus, ou `null`.
+   */
+  async _tourAnthropic(messages, contexte, accumuler, separer) {
+    const mem = this.memoire;
+    const parametres = {
+      model: this.fournisseur.modele,
+      max_tokens: 2048,
+      // On garde la réflexion active : sur Claude Opus 5, la désactiver rend les
+      // appels d'outils peu fiables. L'effort bas suffit pour une conversation.
+      thinking: { type: 'adaptive' },
+      output_config: { effort: mem.etat.reglages.effort || 'low' },
+      system: [
+        { type: 'text', text: consignes(), cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: etatCourant(mem, contexte) },
+      ],
+      messages,
+      tools: this.outils.map((o) =>
+        betaTool({
+          name: o.nom,
+          description: o.description,
+          inputSchema: o.schema,
+          run: o.executer,
+        }),
+      ),
+      stream: true,
+    };
+
+    // Claude Opus 5 peut décliner une requête ; le repli serveur la rejoue
+    // automatiquement sur un autre modèle plutôt que de renvoyer un refus.
+    if (!this.replisSansFallback && parametres.model.startsWith('claude-opus-5')) {
+      parametres.betas = ['server-side-fallback-2026-07-01'];
+      parametres.fallbacks = 'default';
+    }
+
+    let refus = null;
+    try {
+      const runner = this.client.beta.messages.toolRunner(parametres);
+      let premier = true;
+      for await (const flux of runner) {
+        if (!premier) separer();
+        premier = false;
+        for await (const evt of flux) {
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            accumuler(evt.delta.text);
+          }
+        }
+        const message = await flux.finalMessage();
+        if (message.stop_reason === 'refusal') refus = message.stop_details || {};
+        // Un outil serveur peut mettre le tour en pause : on le relance.
+        if (message.stop_reason === 'pause_turn') {
+          runner.pushMessages({ role: 'assistant', content: message.content });
+        }
+      }
+    } catch (err) {
+      // Repli serveur non accepté par ce compte : on refait le tour sans.
+      if (parametres.fallbacks && err?.status === 400 && /fallback|beta/i.test(String(err.message))) {
+        this.replisSansFallback = true;
+        const reprise = new Error('repli sans fallbacks');
+        reprise.reprendre = true;
+        throw reprise;
+      }
+      throw err;
+    }
+    return refus;
+  }
+
+  /**
+   * Un tour sur une API compatible OpenAI : Gemini, Groq, OpenRouter, Kimi,
+   * Cerebras, Mistral, ou un serveur local. Le refus structuré n'existe pas
+   * dans ce dialecte — un refus y prend la forme d'un texte ordinaire.
+   */
+  async _tourOpenAI(messages, contexte, accumuler, separer) {
+    const f = this.fournisseur;
+    if (!f.base) throw new Error("Aucune adresse d'API pour ce fournisseur.");
+    await discuterOpenAI({
+      base: f.base,
+      cle: this.cleApi,
+      modele: f.modele,
+      entetes: typeof f.entetes === 'function' ? f.entetes() : {},
+      // Pas de mise en cache de préfixe ici : un seul bloc système.
+      systeme: `${consignes()}\n\n${etatCourant(this.memoire, contexte)}`,
+      messages,
+      outils: this.outils,
+      surTexte: accumuler,
+      surNouveauTour: separer,
+    });
+    return null;
+  }
+
   async repondre(entree, contexte = {}) {
-    if (!this.client) {
-      this.surErreur(new Error('Aucune clé API configurée.'));
+    if (!this.pret) {
+      this.surErreur(new Error('Aucun fournisseur configuré.'));
       return null;
     }
     if (this.occupe) return null;
@@ -369,65 +475,37 @@ export class Cerveau {
       content: m.contenu,
     }));
 
-    const parametres = {
-      model: mem.etat.reglages.modele || 'claude-opus-5',
-      max_tokens: 2048,
-      // On garde la réflexion active : sur Claude Opus 5, la désactiver rend les
-      // appels d'outils peu fiables. L'effort bas suffit pour une conversation.
-      thinking: { type: 'adaptive' },
-      output_config: { effort: mem.etat.reglages.effort || 'low' },
-      system: [
-        { type: 'text', text: consignes(), cache_control: { type: 'ephemeral' } },
-        { type: 'text', text: etatCourant(mem, contexte) },
-      ],
-      messages,
-      tools: this.outils,
-      stream: true,
-    };
-
-    // Claude Opus 5 peut décliner une requête ; le repli serveur la rejoue
-    // automatiquement sur un autre modèle plutôt que de renvoyer un refus.
-    if (!this.replisSansFallback && parametres.model.startsWith('claude-opus-5')) {
-      parametres.betas = ['server-side-fallback-2026-07-01'];
-      parametres.fallbacks = 'default';
-    }
-
     let texte = '';
     let tampon = '';
     let refus = null;
 
-    try {
-      const runner = this.client.beta.messages.toolRunner(parametres);
-
-      for await (const flux of runner) {
-        for await (const evt of flux) {
-          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-            const morceau = evt.delta.text;
-            texte += morceau;
-            tampon += morceau;
-            this.surTexte(morceau, texte);
-            // On découpe en phrases pour que la voix démarre sans attendre la fin.
-            const coupe = tampon.match(/^([\s\S]*?[.!?…]["»)]?)(\s+)([\s\S]*)$/);
-            if (coupe && coupe[1].trim().length > 2) {
-              this.surPhrase(coupe[1].trim());
-              tampon = coupe[3];
-            }
-          }
-        }
-        const message = await flux.finalMessage();
-        if (message.stop_reason === 'refusal') refus = message.stop_details || {};
-        // Un outil serveur peut mettre le tour en pause : on le relance.
-        if (message.stop_reason === 'pause_turn') {
-          runner.pushMessages({ role: 'assistant', content: message.content });
-        }
+    // Découpe le flux en phrases : la voix démarre sans attendre la fin.
+    const accumuler = (morceau) => {
+      texte += morceau;
+      tampon += morceau;
+      this.surTexte(morceau, texte);
+      const coupe = tampon.match(/^([\s\S]*?[.!?…]["»)]?)(\s+)([\s\S]*)$/);
+      if (coupe && coupe[1].trim().length > 2) {
+        this.surPhrase(coupe[1].trim());
+        tampon = coupe[3];
       }
+    };
+
+    // Appelé entre deux tours d'outils, pour ne pas souder les phrases.
+    const separer = () => {
+      if (texte && !/\s$/.test(texte)) accumuler(' ');
+    };
+
+    try {
+      refus =
+        this.fournisseur.dialecte === 'anthropic'
+          ? await this._tourAnthropic(messages, contexte, accumuler, separer)
+          : await this._tourOpenAI(messages, contexte, accumuler, separer);
     } catch (err) {
-      // Si le repli serveur n'est pas accepté par ce compte, on réessaie sans.
-      const message = String(err?.message || '');
-      if (parametres.fallbacks && /fallback|beta/i.test(message) && err?.status === 400) {
-        this.replisSansFallback = true;
+      if (err?.reprendre) {
+        // Le tour n'a pas eu lieu : on retire le message et on recommence.
         this.occupe = false;
-        mem.etat.conversation.pop(); // on retire le tour, `repondre` le remettra
+        mem.etat.conversation.pop();
         return this.repondre(entree, contexte);
       }
       this.occupe = false;
