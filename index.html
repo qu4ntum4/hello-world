@@ -1,18 +1,151 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="fr">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-  <title>my-first-website</title>
-  <LINK href="styles.css" rel="stylesheet" type="text/css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Compagnon</title>
+<meta name="description" content="Un compagnon interactif : avatar 3D animé dont les gestes, l'humeur et les paroles sont générés par Claude.">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128123;</text></svg>">
 </head>
-
 <body>
 
-<img src="https://octodex.github.com/images/daftpunktocat-thomas.gif" id="octocat" alt="octocat-gif" />
+<div id="scene">
+  <canvas id="toile"></canvas>
+  <div id="lueur" aria-hidden="true"></div>
+</div>
 
-<!-- Change this code here by copy and pasting your template on line 15 -->
-<p>Welcome to your first GitHub Pages website!</p>
+<header id="entete">
+  <div class="identite">
+    <span id="nom-compagnon">Nyx</span>
+    <span id="etat-lien" class="puce">inconnus</span>
+  </div>
+  <div class="actions">
+    <button id="btn-memoire" class="icone" title="Mémoire" aria-label="Mémoire">◍</button>
+    <button id="btn-reglages" class="icone" title="Réglages" aria-label="Réglages">⚙</button>
+  </div>
+</header>
 
+<div id="humeur-hud" aria-hidden="true">
+  <div class="jauge"><span>humeur</span><i><b id="j-valence"></b></i></div>
+  <div class="jauge"><span>éveil</span><i><b id="j-eveil"></b></i></div>
+  <div class="jauge"><span>énergie</span><i><b id="j-energie"></b></i></div>
+  <div class="jauge"><span>lien</span><i><b id="j-affection"></b></i></div>
+</div>
+
+<main id="dialogue" aria-live="polite"></main>
+
+<div id="signal-outil" role="status"></div>
+
+<form id="composer" autocomplete="off">
+  <button type="button" id="btn-micro" class="icone gros" title="Parler (micro)" aria-label="Parler">🎙</button>
+  <textarea id="saisie" rows="1" placeholder="Dis-lui quelque chose…" aria-label="Message"></textarea>
+  <button type="button" id="btn-voix" class="icone gros actif" title="Voix activée" aria-label="Voix">🔊</button>
+  <button type="submit" id="btn-envoyer" class="icone gros primaire" title="Envoyer" aria-label="Envoyer">↑</button>
+</form>
+
+<!-- ------------------------------------------------------------ tiroir -->
+<aside id="tiroir" hidden>
+  <div class="tiroir-entete">
+    <strong id="tiroir-titre">Réglages</strong>
+    <button class="icone" id="btn-fermer-tiroir" aria-label="Fermer">✕</button>
+  </div>
+
+  <section class="panneau" id="panneau-reglages">
+    <h3>Connexion</h3>
+    <label for="cle-api">Clé API Anthropic</label>
+    <input type="password" id="cle-api" placeholder="sk-ant-…" spellcheck="false">
+    <p class="aide">
+      Elle reste dans <em>ce</em> navigateur et part directement vers
+      <code>api.anthropic.com</code>. Aucun serveur intermédiaire — donc à n'utiliser
+      que sur une machine qui t'appartient.
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Créer une clé</a>
+    </p>
+
+    <label for="modele">Modèle</label>
+    <select id="modele"></select>
+
+    <label for="effort">Profondeur de réflexion</label>
+    <select id="effort">
+      <option value="low">Basse — répond vite (recommandé)</option>
+      <option value="medium">Moyenne</option>
+      <option value="high">Haute — plus lent, plus fin</option>
+    </select>
+
+    <h3>Voix</h3>
+    <label for="voix-choisie">Timbre</label>
+    <select id="voix-choisie"></select>
+    <label class="bascule">
+      <input type="checkbox" id="opt-voix" checked>
+      <span>Il parle à voix haute</span>
+    </label>
+    <label class="bascule">
+      <input type="checkbox" id="opt-micro">
+      <span>Réécoute automatiquement après chaque réponse</span>
+    </label>
+
+    <h3>Autonomie</h3>
+    <label class="bascule">
+      <input type="checkbox" id="opt-autonomie" checked>
+      <span>Il peut prendre la parole de lui-même</span>
+    </label>
+    <p class="aide">
+      Laissé seul, il s'ennuie puis se manifeste — au plus une fois toutes les deux
+      minutes et demie, et douze fois par session.
+    </p>
+  </section>
+
+  <section class="panneau" id="panneau-memoire" hidden>
+    <div id="resume-memoire"></div>
+
+    <h3>Ce qu'il sait de toi</h3>
+    <ul id="liste-faits" class="liste"></ul>
+
+    <h3>Son journal</h3>
+    <ul id="liste-journal" class="liste"></ul>
+
+    <h3>Sauvegarde</h3>
+    <p class="aide">
+      Sa mémoire vit dans le stockage local de ce navigateur. Vider les données du
+      site l'efface. Exporte-la pour la conserver ou la transporter ailleurs.
+    </p>
+    <div class="rangee">
+      <button type="button" class="bouton" id="btn-exporter">Exporter</button>
+      <button type="button" class="bouton" id="btn-importer">Importer</button>
+      <button type="button" class="bouton danger" id="btn-reinitialiser">Tout oublier</button>
+    </div>
+    <input type="file" id="fichier-import" accept="application/json" hidden>
+  </section>
+</aside>
+
+<div id="voile" hidden></div>
+
+<div id="accueil" hidden>
+  <div class="carte">
+    <h2>Avant de le réveiller</h2>
+    <p>
+      Ce compagnon est piloté par Claude. Il lui faut ta clé API Anthropic : elle est
+      enregistrée <strong>dans ce navigateur uniquement</strong> et envoyée directement
+      à <code>api.anthropic.com</code>.
+    </p>
+    <input type="password" id="cle-accueil" placeholder="sk-ant-…" spellcheck="false">
+    <p class="aide">
+      Pas de clé ?
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+      Tu peux aussi entrer sans : il bougera, mais restera muet.
+    </p>
+    <div class="rangee">
+      <button type="button" class="bouton primaire" id="btn-accueil-ok">Le réveiller</button>
+      <button type="button" class="bouton" id="btn-accueil-plus-tard">Plus tard</button>
+    </div>
+  </div>
+</div>
+
+<noscript>
+  <p style="padding:2rem;color:#eee">Ce compagnon a besoin de JavaScript pour vivre.</p>
+</noscript>
+
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

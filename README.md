@@ -1,90 +1,163 @@
-# Welcome to GitHub
+# Compagnon
 
-Welcome to GitHub—where millions of developers work together on software. Ready to get started? Let’s learn how this all works by building and publishing your first GitHub Pages website!
+Un compagnon interactif : un avatar 3D animé en temps réel dont **les gestes,
+l'humeur, l'apparence, les souvenirs et la parole sont générés par Claude**.
+Il vit dans une page web statique — pas de serveur, pas de build.
 
-## Repositories
+Il n'oublie pas. D'une visite à l'autre il retrouve son humeur, ce que vous
+vous êtes dit, ce qu'il a appris de vous, et le lien qui s'est construit.
+Laissé seul, il s'ennuie, se fatigue, finit par s'endormir — et prend parfois
+la parole tout seul.
 
-Right now, we’re in your first GitHub **repository**. A repository is like a folder or storage space for your project. Your project's repository contains all its files such as code, documentation, images, and more. It also tracks every change that you—or your collaborators—make to each file, so you can always go back to previous versions of your project if you make any mistakes.
+## Démarrer
 
-This repository contains three important files: The HTML code for your first website on GitHub, the CSS stylesheet that decorates your website with colors and fonts, and the **README** file. It also contains an image folder, with one image file.
+**En ligne** — activer GitHub Pages sur ce dépôt (Settings → Pages → branche
+`main`, dossier `/`), puis ouvrir l'URL publiée.
 
-## Describe your project
+**En local** — n'importe quel serveur statique fait l'affaire ; ouvrir le
+fichier directement ne marche pas (les modules ES exigent `http://`) :
 
-You are currently viewing your project's **README** file. **_README_** files are like cover pages or elevator pitches for your project. They are written in plain text or [Markdown language](https://guides.github.com/features/mastering-markdown/), and usually include a paragraph describing the project, directions on how to use it, who authored it, and more.
-
-[Learn more about READMEs](https://help.github.com/en/articles/about-readmes)
-
-## Your first website
-
-**GitHub Pages** is a free and easy way to create a website using the code that lives in your GitHub repositories. You can use GitHub Pages to build a portfolio of your work, create a personal website, or share a fun project that you coded with the world. GitHub Pages is automatically enabled in this repository, but when you create new repositories in the future, the steps to launch a GitHub Pages website will be slightly different.
-
-[Learn more about GitHub Pages](https://pages.github.com/)
-
-## Rename this repository to publish your site
-
-We've already set-up a GitHub Pages website for you, based on your personal username. This repository is called `hello-world`, but you'll rename it to: `username.github.io`, to match your website's URL address. If the first part of the repository doesn’t exactly match your username, it won’t work, so make sure to get it right.
-
-Let's get started! To update this repository’s name, click the `Settings` tab on this page. This will take you to your repository’s settings page. 
-
-![repo-settings-image](https://user-images.githubusercontent.com/18093541/63130482-99e6ad80-bf88-11e9-99a1-d3cf1660b47e.png)
-
-Under the **Repository Name** heading, type: `username.github.io`, where username is your username on GitHub. Then click **Rename**—and that’s it. When you’re done, click your repository name or browser’s back button to return to this page.
-
-<img width="1039" alt="rename_screenshot" src="https://user-images.githubusercontent.com/18093541/63129466-956cc580-bf85-11e9-92d8-b028dd483fa5.png">
-
-Once you click **Rename**, your website will automatically be published at: https://your-username.github.io/. The HTML file—called `index.html`—is rendered as the home page and you'll be making changes to this file in the next step.
-
-Congratulations! You just launched your first GitHub Pages website. It's now live to share with the entire world
-
-## Making your first edit
-
-When you make any change to any file in your project, you’re making a **commit**. If you fix a typo, update a filename, or edit your code, you can add it to GitHub as a commit. Your commits represent your project’s entire history—and they’re all saved in your project’s repository.
-
-With each commit, you have the opportunity to write a **commit message**, a short, meaningful comment describing the change you’re making to a file. So you always know exactly what changed, no matter when you return to a commit.
-
-## Practice: Customize your first GitHub website by writing HTML code
-
-Want to edit the site you just published? Let’s practice commits by introducing yourself in your `index.html` file. Don’t worry about getting it right the first time—you can always build on your introduction later.
-
-Let’s start with this template:
-
-```
-<p>Hello World! I’m [username]. This is my website!</p>
+```sh
+python3 -m http.server 8000   # puis http://localhost:8000
 ```
 
-To add your introduction, copy our template and click the edit pencil icon at the top right hand corner of the `index.html` file.
+Au premier lancement, il demande une **clé API Anthropic**
+([console.anthropic.com](https://console.anthropic.com/settings/keys)). Sans
+clé, il apparaît et bouge, mais reste muet.
 
-<img width="997" alt="edit-this-file" src="https://user-images.githubusercontent.com/18093541/63131820-0794d880-bf8d-11e9-8b3d-c096355e9389.png">
+### Sur la clé API — à lire avant de publier la page
 
+La clé est enregistrée dans le `localStorage` de votre navigateur et envoyée
+**directement** à `api.anthropic.com` depuis la page (en-tête
+`anthropic-dangerous-direct-browser-access`). Il n'y a aucun serveur
+intermédiaire, donc aucun endroit où la clé pourrait être cachée.
 
-Delete this placeholder line:
+Concrètement :
+
+- Utilisez-le sur **vos** machines. Toute personne ayant accès au navigateur a
+  accès à la clé.
+- Une page GitHub Pages est publique, mais **votre clé ne l'est pas** : elle
+  n'est jamais dans le code, seulement dans le navigateur de qui la saisit.
+- Pour un usage partagé ou exposé, il faudrait un petit proxy côté serveur qui
+  détient la clé. Ce dépôt ne va pas jusque-là, volontairement — c'est le prix
+  du « zéro backend ».
+
+## Ce que l'IA pilote réellement
+
+Le modèle ne renvoie pas que du texte : il dispose d'outils qui agissent sur le
+personnage. C'est ce qui distingue une vraie génération d'un habillage par
+mots-clés.
+
+| Outil | Effet |
+| --- | --- |
+| `exprimer` | Change l'expression du visage et déclenche un geste, tout de suite |
+| `ressentir` | Fait dériver l'humeur de fond (valence, éveil, énergie) |
+| `memoriser` / `oublier` | Écrit ou efface un souvenir durable |
+| `lien` | Fait évoluer l'attachement et la confiance |
+| `apparence` | Change sa couleur et celle de ses particules |
+| `journal` | Note une phrase dans son journal de bord |
+| `question_en_attente` | Garde une question pour la prochaine fois |
+| `identite` | Retient votre prénom, le surnom qu'il vous donne, ou change le sien |
+
+14 émotions (`joie`, `tristesse`, `colère`, `tendresse`, `espièglerie`,
+`ennui`, `fatigue`…) et 18 gestes (`saluer`, `hocher`, `hausser_epaules`,
+`réfléchir`, `rire`, `soupirer`, `danser`, `cœur`, `se_blottir`, `dormir`…).
+
+## Ce qui est conservé entre deux sessions
+
+Tout est dans le `localStorage`, sous une seule clé :
+
+- **humeur et énergie**, qui dérivent pendant votre absence — trois jours sans
+  venir et il est mélancolique ;
+- **historique de conversation** (80 derniers messages), réinjecté comme contexte ;
+- **faits appris** sur vous, classés et hiérarchisés par importance ;
+- **relation** : familiarité, confiance, attachement, six paliers de `inconnus`
+  à `inséparables` ;
+- **traits de personnalité** qui dérivent lentement — c'est ce qui fait qu'il
+  devient *le vôtre* ;
+- **journal de bord**, **sujets récurrents**, **questions en attente**,
+  **surnoms**, **apparence**, et l'**histogramme des heures** auxquelles vous
+  venez le voir.
+
+Le panneau ◍ montre tout ça et permet d'**exporter / importer** la mémoire en
+JSON (utile : vider les données du site l'efface définitivement).
+
+## Architecture
 
 ```
-<p>Welcome to your first GitHub Pages website!</p>
+index.html          structure de la page
+styles.css          interface ; --teinte / --accent suivent l'humeur
+js/avatar3d.js      corps, visage, animation trois couches (base · humeur · gestes)
+js/brain.js         connexion Claude : outils, streaming, prompt système
+js/memory.js        état persistant, dérive de l'humeur, import/export
+js/voice.js         synthèse vocale et reconnaissance vocale du navigateur
+js/life.js          vie autonome : ennui, sommeil, prises de parole spontanées
+js/main.js          assemblage et interface
+vendor/             three.js et le SDK Anthropic, embarqués (voir plus bas)
 ```
 
-Then, paste the template to line 15 and fill in the blanks.
+L'avatar est **entièrement construit par code** — aucun modèle 3D à charger.
+Le corps est un solide de révolution, le visage est posé sur sa surface par
+calcul, et l'animation se compose en trois couches additives : la base
+procédurale (respiration, flottement, clignements, suivi du regard), l'humeur
+(pose et couleurs cibles, lissées), et les gestes joués par-dessus.
 
-<img width="1032" alt="edit-githuboctocat-index" src="https://user-images.githubusercontent.com/18093541/63132339-c3a2d300-bf8e-11e9-8222-59c2702f6c42.png">
+### Ajouter un geste ou une émotion
 
+Une entrée dans `GESTES` ou `EMOTIONS` (`js/avatar3d.js`) suffit : la liste
+envoyée au modèle est dérivée de ces objets, il saura s'en servir sans rien
+changer d'autre.
 
-When you’re done, scroll down to the `Commit changes` section near the bottom of the edit page. Add a short message explaining your change, like "Add my introduction", then click `Commit changes`.
+```js
+saluer_timidement: {
+  duree: 1.4,
+  appliquer(p, t, i) {
+    const e = enveloppe(t);       // 0 → 1 → 0
+    p.mainD.y += 0.3 * e * i;
+    p.teteRoll += 0.1 * e * i;
+  },
+},
+```
 
+## Réglages
 
-<img width="1030" alt="add-my-username" src="https://user-images.githubusercontent.com/18093541/63131801-efbd5480-bf8c-11e9-9806-89273f027d16.png">
+- **Modèle** — Claude Opus 5 par défaut (le plus incarné), Sonnet 5 ou
+  Haiku 4.5 pour aller plus vite et moins cher.
+- **Profondeur de réflexion** — `low` par défaut : une conversation n'a pas
+  besoin de plus, et la latence compte. La réflexion reste *activée* (la
+  désactiver rend les appels d'outils peu fiables sur Opus 5).
+- **Autonomie** — ses prises de parole spontanées sont bornées : une toutes les
+  2 min 30 au plus, douze par session, jamais quand l'onglet est en arrière-plan.
 
-Once you click `Commit changes`, your changes will automatically be published on your GitHub Pages website. Refresh the page to see your new changes live in action.
+## Limites connues
 
-:tada: You just made your first commit! :tada:
+- La **voix** dépend du navigateur. La synthèse marche partout ; la
+  reconnaissance vocale demande Chrome ou Edge.
+- Le `localStorage` est **par navigateur et par appareil** : il ne vous suit pas
+  d'une machine à l'autre. L'export JSON est là pour ça.
+- Chaque prise de parole coûte un appel API. C'est visible surtout avec
+  l'autonomie activée.
 
-## Extra Credit: Keep on building!
+## Dépendances embarquées
 
-Change the placeholder Octocat gif on your GitHub Pages website by [creating your own personal Octocat emoji](https://myoctocat.com/build-your-octocat/) or [choose a different Octocat gif from our logo library here](https://octodex.github.com/). Add that image to line 12 of your `index.html` file, in place of the `<img src=` link.
+`vendor/` contient [three.js](https://threejs.org) r180 et le
+[SDK Anthropic](https://github.com/anthropics/anthropic-sdk-typescript) 0.115.0
+(tous deux MIT), afin que la page fonctionne sans CDN ni étape de build. Pour
+les régénérer :
 
-Want to add even more code and fun styles to your GitHub Pages website? [Follow these instructions](https://github.com/github/personal-website) to build a fully-fledged static website.
+```sh
+npm pack three@0.180.0 && tar xzf three-0.180.0.tgz
+cp package/build/three.module.js package/build/three.core.js vendor/
 
-![octocat](./images/create-octocat.png)
+npm i @anthropic-ai/sdk esbuild
+printf "export { default as Anthropic } from '@anthropic-ai/sdk';\n\
+export * from '@anthropic-ai/sdk';\n\
+export { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema';\n" > entry.js
+npx esbuild entry.js --bundle --format=esm --platform=browser --target=es2022 \
+  --alias:node:fs=./vendor/node-stub.js --alias:node:path=./vendor/node-stub.js \
+  --outfile=vendor/anthropic.esm.js
+```
 
-## Everything you need to know about GitHub
-
-Getting started is the hardest part. If there’s anything you’d like to know as you get started with GitHub, try searching [GitHub Help](https://help.github.com). Our documentation has tutorials on everything from changing your repository settings to configuring GitHub from your command line.
+`vendor/node-stub.js` neutralise les accès disque que le SDK n'utilise que côté
+Node (lecture de profils d'identification) et qui n'existent pas dans un
+navigateur. Il n'est pas chargé par la page.
