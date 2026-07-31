@@ -28,15 +28,17 @@ export const FOURNISSEURS = {
 
   gemini: {
     nom: 'Google Gemini',
-    dialecte: 'openai',
-    base: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    // API native, et non la couche de compatibilité OpenAI : celle-ci casse le
+    // function calling sur les modèles Gemini récents (400 INVALID_ARGUMENT).
+    dialecte: 'gemini',
+    base: 'https://generativelanguage.googleapis.com/v1beta',
     modeles: ['gemini-3.5-flash', 'gemini-3.6-flash'],
     modeleParDefaut: 'gemini-3.5-flash',
     cles: 'https://aistudio.google.com/apikey',
     listeModeles: 'https://ai.google.dev/gemini-api/docs/models',
     gratuit: '15 requêtes/min, 1500/jour — sans carte bancaire',
     cors: 'vérifié',
-    note: "Le meilleur palier gratuit pour cet usage : limites larges, function calling et streaming.",
+    note: "Le meilleur palier gratuit pour cet usage. Passe par l'API native de Google, seule capable de transporter les signatures de pensée qu'exige Gemini 3 pour les outils.",
   },
 
   groq: {
@@ -135,7 +137,7 @@ export const FOURNISSEURS = {
     cles: null,
     gratuit: null,
     cors: 'inconnu',
-    note: "Pour tout service exposant /chat/completions : DeepSeek, Together, Fireworks, ton propre relais…",
+    note: "Pour tout service exposant /chat/completions : DeepSeek, Together, Fireworks, ton propre relais… À éviter pour Gemini : sa couche de compatibilité OpenAI ne sait pas gérer les outils.",
   },
 };
 
@@ -217,7 +219,7 @@ export async function discuterOpenAI({
     // Le modèle veut des outils : on les exécute et on relance le tour.
     fil.push({
       role: 'assistant',
-      content: texte || null,
+      content: texte || '',
       tool_calls: appels.map((a) => ({
         id: a.id,
         type: 'function',
@@ -298,15 +300,189 @@ async function lireFlux(corps, surMorceau) {
   return { texte, appels, raison };
 }
 
+/**
+ * Normalise un corps d'erreur. Google renvoie un *tableau* `[{error:{…}}]` et
+ * loge souvent le champ fautif dans `details[].fieldViolations` — sans ça,
+ * l'utilisateur ne voit qu'un JSON brut illisible.
+ */
 async function erreurHttp(reponse) {
   let detail = '';
   try {
-    const corps = await reponse.json();
-    detail = corps?.error?.message || corps?.message || JSON.stringify(corps).slice(0, 200);
+    const brut = await reponse.json();
+    const corps = Array.isArray(brut) ? brut[0] : brut;
+    const erreur = corps?.error || corps;
+    const violations = (erreur?.details || [])
+      .flatMap((d) => d.fieldViolations || [])
+      .map((v) => `${v.field ? `${v.field} : ` : ''}${v.description || ''}`)
+      .filter(Boolean);
+    detail = [erreur?.message, ...violations].filter(Boolean).join(' — ')
+      || JSON.stringify(brut).slice(0, 300);
   } catch {
     detail = await reponse.text().catch(() => '');
   }
   const err = new Error(detail || `HTTP ${reponse.status}`);
   err.status = reponse.status;
   return err;
+}
+
+// ------------------------------------------------------------ API Gemini
+
+/**
+ * Le schéma des déclarations de fonctions Gemini est un sous-ensemble
+ * d'OpenAPI : les types s'écrivent en majuscules et tout mot-clé inconnu fait
+ * échouer la requête entière avec un 400 peu bavard. On ne garde donc que ce
+ * qui est documenté comme supporté.
+ */
+const CLES_SCHEMA_GEMINI = new Set([
+  'type', 'format', 'description', 'nullable', 'enum', 'items',
+  'properties', 'required', 'minimum', 'maximum', 'anyOf',
+]);
+
+export function schemaVersGemini(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  const sortie = {};
+  for (const [cle, valeur] of Object.entries(schema)) {
+    if (!CLES_SCHEMA_GEMINI.has(cle)) continue;
+    if (cle === 'type') sortie.type = String(valeur).toUpperCase();
+    else if (cle === 'properties') {
+      sortie.properties = Object.fromEntries(
+        Object.entries(valeur).map(([k, v]) => [k, schemaVersGemini(v)]),
+      );
+    } else if (cle === 'items') sortie.items = schemaVersGemini(valeur);
+    else if (cle === 'anyOf') sortie.anyOf = valeur.map(schemaVersGemini);
+    else sortie[cle] = valeur;
+  }
+  // Une fonction sans paramètre est refusée ; un `required` vide aussi.
+  if (Array.isArray(sortie.required) && !sortie.required.length) delete sortie.required;
+  return sortie;
+}
+
+/** Un tour de conversation sur l'API native de Gemini, outils compris. */
+export async function discuterGemini({
+  base,
+  cle,
+  modele,
+  systeme,
+  messages,
+  outils,
+  maxTokens = 2048,
+  surTexte = () => {},
+  surNouveauTour = () => {},
+  maxTours = 6,
+}) {
+  const racine = String(base).replace(/\/+$/, '');
+  const url = `${racine}/models/${encodeURIComponent(modele)}:streamGenerateContent?alt=sse`;
+
+  // Gemini parle en « contents » avec les rôles user / model.
+  const contents = messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+
+  const declarations = outils.map((o) => ({
+    name: o.nom,
+    description: o.description,
+    parameters: schemaVersGemini(o.schema),
+  }));
+
+  let texteFinal = '';
+
+  for (let tour = 0; tour < maxTours; tour++) {
+    if (tour > 0) surNouveauTour();
+
+    const reponse = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': cle },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systeme }] },
+        contents,
+        tools: declarations.length ? [{ functionDeclarations: declarations }] : undefined,
+        generationConfig: { maxOutputTokens: maxTokens },
+      }),
+    });
+
+    if (!reponse.ok) throw await erreurHttp(reponse);
+    if (!reponse.body) throw new Error('Réponse sans corps — streaming indisponible.');
+
+    const { appels, parts } = await lireFluxGemini(reponse.body, (m) => {
+      texteFinal += m;
+      surTexte(m, texteFinal);
+    });
+
+    if (!appels.length) return texteFinal;
+
+    // On réémet les parts du modèle *telles quelles*. Gemini 3 attache une
+    // `thoughtSignature` à la première part `functionCall` et refuse le tour
+    // suivant si elle manque ou a été reconstruite : il ne faut donc surtout
+    // pas rebâtir les parts à la main.
+    contents.push({ role: 'model', parts });
+
+    const reponses = [];
+    for (const appel of appels) {
+      const outil = outils.find((o) => o.nom === appel.nom);
+      let resultat;
+      try {
+        resultat = outil
+          ? String(outil.executer(appel.args || {}) ?? 'ok')
+          : `outil inconnu : ${appel.nom}`;
+      } catch (err) {
+        resultat = `erreur : ${err.message}`;
+      }
+      reponses.push({ functionResponse: { name: appel.nom, response: { result: resultat } } });
+    }
+    contents.push({ role: 'user', parts: reponses });
+  }
+
+  return texteFinal;
+}
+
+/**
+ * Lit le flux SSE de Gemini. Retourne les appels de fonctions *et* les parts
+ * brutes, qui doivent être renvoyées intactes au tour suivant (signatures de
+ * pensée comprises).
+ */
+async function lireFluxGemini(corps, surMorceau) {
+  const lecteur = corps.getReader();
+  const decodeur = new TextDecoder();
+  let tampon = '';
+  let texte = '';
+  const appels = [];
+  const parts = [];
+
+  while (true) {
+    const { done, value } = await lecteur.read();
+    if (done) break;
+    tampon += decodeur.decode(value, { stream: true });
+
+    let coupure;
+    while ((coupure = tampon.indexOf('\n')) !== -1) {
+      const ligne = tampon.slice(0, coupure).trim();
+      tampon = tampon.slice(coupure + 1);
+      if (!ligne.startsWith('data:')) continue;
+      const charge = ligne.slice(5).trim();
+      if (!charge || charge === '[DONE]') continue;
+
+      let evt;
+      try {
+        evt = JSON.parse(charge);
+      } catch {
+        continue;
+      }
+
+      for (const part of evt.candidates?.[0]?.content?.parts || []) {
+        // Les parts de raisonnement ne se réémettent pas et ne s'affichent pas.
+        if (part.thought) continue;
+        parts.push(part);
+        if (typeof part.text === 'string' && part.text) {
+          texte += part.text;
+          surMorceau(part.text);
+        }
+        if (part.functionCall?.name) {
+          appels.push({ nom: part.functionCall.name, args: part.functionCall.args || {} });
+        }
+      }
+    }
+  }
+
+  return { texte, appels, parts };
 }

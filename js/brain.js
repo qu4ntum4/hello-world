@@ -13,7 +13,7 @@
 import { Anthropic, betaTool } from '../vendor/anthropic.esm.js';
 import { NOMS_EMOTIONS, NOMS_GESTES } from './avatar3d.js';
 import { NOMS_NIVEAUX, formaterDuree } from './memory.js';
-import { FOURNISSEURS, discuterOpenAI } from './providers.js';
+import { FOURNISSEURS, discuterOpenAI, discuterGemini } from './providers.js';
 
 const SILENCE = '⟨silence⟩';
 
@@ -437,6 +437,26 @@ export class Cerveau {
   }
 
   /**
+   * Un tour sur l'API native de Gemini. On n'utilise pas sa couche de
+   * compatibilité OpenAI : le format OpenAI n'a pas de champ pour transporter
+   * les signatures de pensée, que Gemini 3 exige sur les appels de fonctions.
+   */
+  async _tourGemini(messages, contexte, accumuler, separer) {
+    const f = this.fournisseur;
+    await discuterGemini({
+      base: f.base,
+      cle: this.cleApi,
+      modele: f.modele,
+      systeme: `${consignes()}\n\n${etatCourant(this.memoire, contexte)}`,
+      messages,
+      outils: this.outils,
+      surTexte: accumuler,
+      surNouveauTour: separer,
+    });
+    return null;
+  }
+
+  /**
    * Un tour sur une API compatible OpenAI : Gemini, Groq, OpenRouter, Kimi,
    * Cerebras, Mistral, ou un serveur local. Le refus structuré n'existe pas
    * dans ce dialecte — un refus y prend la forme d'un texte ordinaire.
@@ -496,11 +516,14 @@ export class Cerveau {
       if (texte && !/\s$/.test(texte)) accumuler(' ');
     };
 
+    const tours = {
+      anthropic: () => this._tourAnthropic(messages, contexte, accumuler, separer),
+      gemini: () => this._tourGemini(messages, contexte, accumuler, separer),
+      openai: () => this._tourOpenAI(messages, contexte, accumuler, separer),
+    };
+
     try {
-      refus =
-        this.fournisseur.dialecte === 'anthropic'
-          ? await this._tourAnthropic(messages, contexte, accumuler, separer)
-          : await this._tourOpenAI(messages, contexte, accumuler, separer);
+      refus = await (tours[this.fournisseur.dialecte] || tours.openai)();
     } catch (err) {
       if (err?.reprendre) {
         // Le tour n'a pas eu lieu : on retire le message et on recommence.

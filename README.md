@@ -36,6 +36,12 @@ ignorent : la page appelle l'API **directement depuis le navigateur** (il faut
 donc que le fournisseur autorise le CORS), et le compagnon a besoin du
 **function calling en streaming** pour piloter ses gestes.
 
+Gemini fait exception et utilise son **API native** plutôt que sa couche de
+compatibilité OpenAI. Gemini 3 attache une « signature de pensée » à chaque
+appel de fonction et refuse le tour suivant si elle n'est pas renvoyée
+telle quelle ; le format OpenAI n'a aucun champ pour la transporter, donc cette
+couche est structurellement incompatible avec les outils.
+
 | Fournisseur | Gratuit | Navigateur | Pour cette app |
 | --- | --- | --- | --- |
 | **Google Gemini** | 15 req/min, 1500/jour, permanent | ✅ vérifié par test | **Le meilleur choix gratuit** |
