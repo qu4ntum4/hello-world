@@ -161,7 +161,11 @@ vie.demarrer();
 
 // -------------------------------------------------------------- interface
 
-function ajouterBulle(genre, texte, curseur = false) {
+// Combien de temps un avis passager reste à l'écran, en millisecondes.
+const DUREE_ERREUR = 9000;
+const DUREE_AVIS = 6000;
+
+function ajouterBulle(genre, texte, curseur = false, ephemere = undefined) {
   const div = document.createElement('div');
   div.className = `bulle ${genre}${curseur ? ' curseur' : ''}`;
   div.textContent = texte;
@@ -169,7 +173,41 @@ function ajouterBulle(genre, texte, curseur = false) {
   // On ne garde pas 200 bulles dans le DOM.
   while (el.dialogue.children.length > 60) el.dialogue.firstChild.remove();
   defiler();
+
+  // Les erreurs s'effacent seules ; le fil de conversation, jamais.
+  const duree = ephemere === undefined && genre === 'erreur' ? DUREE_ERREUR : ephemere;
+  if (duree) programmerDisparition(div, duree);
   return div;
+}
+
+/**
+ * Efface une bulle après un délai, en fondu. Le survol suspend le compte à
+ * rebours — on ne veut pas qu'un message disparaisse pendant sa lecture — et
+ * un clic la referme tout de suite.
+ */
+function programmerDisparition(bulle, duree) {
+  let minuteur = null;
+  bulle.classList.add('ephemere');
+
+  const partir = () => {
+    clearTimeout(minuteur);
+    if (!bulle.isConnected) return;
+    bulle.classList.add('sort');
+    bulle.addEventListener('animationend', () => bulle.remove(), { once: true });
+    // Filet de sécurité si l'animation ne se déclenche pas (onglet caché,
+    // animations désactivées) : la bulle doit disparaître quand même.
+    setTimeout(() => bulle.remove(), 900);
+  };
+
+  const armer = () => {
+    clearTimeout(minuteur);
+    minuteur = setTimeout(partir, duree);
+  };
+
+  bulle.addEventListener('pointerenter', () => clearTimeout(minuteur));
+  bulle.addEventListener('pointerleave', armer);
+  bulle.addEventListener('click', partir);
+  armer();
 }
 
 function defiler() {
@@ -436,7 +474,7 @@ el.fournisseur.addEventListener('change', () => {
   memoire.sauver();
   cerveau.configurer(memoire.cleCourante);
   rendreReglages();
-  ajouterBulle('systeme', `Il écoute maintenant ${f.nom}.`);
+  ajouterBulle('systeme', `Il écoute maintenant ${f.nom}.`, false, DUREE_AVIS);
 });
 
 el.baseApi.addEventListener('change', () => {
@@ -559,7 +597,7 @@ el.fichierImport.addEventListener('change', async () => {
     majInterface();
     rendreMemoire();
     rendreReglages();
-    ajouterBulle('systeme', 'Mémoire restaurée.');
+    ajouterBulle('systeme', 'Mémoire restaurée.', false, DUREE_AVIS);
   } catch (err) {
     ajouterBulle('erreur', `Fichier illisible : ${err.message}`);
   }
@@ -578,7 +616,7 @@ el.btnReinitialiser.addEventListener('click', () => {
   el.dialogue.innerHTML = '';
   majInterface();
   rendreMemoire();
-  ajouterBulle('systeme', 'Il ne se souvient plus de rien.');
+  ajouterBulle('systeme', 'Il ne se souvient plus de rien.', false, DUREE_AVIS);
 });
 
 // ---------------------------------------------------------------- regard

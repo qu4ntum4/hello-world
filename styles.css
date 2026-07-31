@@ -277,6 +277,17 @@ body {
   to { opacity: 1; transform: none; }
 }
 
+/* Les avis passagers (erreurs, confirmations) s'effacent d'eux-mêmes plutôt
+   que d'encombrer la scène. Le survol suspend le compte à rebours. */
+.bulle.sort {
+  animation: sortie 0.45s ease forwards;
+  pointer-events: none;
+}
+@keyframes sortie {
+  to { opacity: 0; transform: translateY(-8px) scale(0.97); }
+}
+.bulle.ephemere { cursor: pointer; }
+
 .curseur::after {
   content: '▍';
   opacity: 0.55;
