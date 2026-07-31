@@ -47,6 +47,7 @@ const el = {
   suggestions: $('modeles-suggeres'),
   fournisseurAccueil: $('fournisseur-accueil'),
   noteAccueil: $('note-accueil'),
+  lienClesAccueil: $('lien-cles-accueil'),
   effort: $('effort'),
   voixChoisie: $('voix-choisie'),
   optVoix: $('opt-voix'),
@@ -202,8 +203,13 @@ function messageErreur(err) {
   if (statut === 429) return 'Trop de requêtes. Laisse-lui quelques secondes.';
   if (statut === 400) return `Requête refusée : ${err.message || 'paramètre invalide'}`;
   if (statut >= 500) return "L'API est indisponible. Réessaie dans un instant.";
-  if (/fetch|network|Failed/i.test(String(err?.message))) {
-    return 'Connexion impossible à api.anthropic.com. Vérifie ta connexion.';
+  if (statut === 404) return "Modèle ou adresse introuvable. Vérifie le nom du modèle dans les réglages.";
+  if (/fetch|network|Failed|NetworkError|load failed/i.test(String(err?.message))) {
+    // Sans serveur intermédiaire, un blocage CORS est indiscernable d'une
+    // panne réseau côté JavaScript : on donne les deux pistes.
+    const f = FOURNISSEURS[memoire.etat.reglages.fournisseur];
+    const hote = (f?.base || '').replace(/^https?:\/\//, '').split('/')[0] || "l'API";
+    return `Impossible de joindre ${hote}. Soit la connexion a échoué, soit ce fournisseur refuse les appels depuis un navigateur (CORS).`;
   }
   return err?.message || 'Erreur inconnue.';
 }
@@ -317,9 +323,31 @@ function garnirFournisseurs(select) {
   for (const [cle, f] of Object.entries(FOURNISSEURS)) {
     const opt = document.createElement('option');
     opt.value = cle;
-    opt.textContent = f.gratuit ? `${f.nom} — gratuit : ${f.gratuit}` : f.nom;
+    // Libellé court : le détail du palier gratuit tient dans la note en dessous,
+    // où il ne risque pas d'être tronqué par la largeur du menu.
+    opt.textContent = f.gratuit ? `${f.nom} · gratuit` : f.nom;
     select.appendChild(opt);
   }
+}
+
+/** « Google Gemini » plutôt que « Google Gemini — Claude / (Ollama, LM Studio) ». */
+function nomCourt(cle) {
+  return (FOURNISSEURS[cle]?.nom || '').split(' — ')[0].split(' (')[0].trim();
+}
+
+/**
+ * Pointe le lien vers la page où *ce* fournisseur délivre les clés.
+ * Masqué quand il n'y en a pas : un serveur local n'en demande aucune.
+ */
+function majLienCles(lien, cleFournisseur, fort = false) {
+  const f = FOURNISSEURS[cleFournisseur];
+  const dispo = Boolean(f?.cles);
+  lien.hidden = !dispo;
+  if (!dispo) return;
+  lien.href = f.cles;
+  lien.textContent = fort
+    ? `Créer une clé sur ${nomCourt(cleFournisseur)} ↗`
+    : `Obtenir une clé ${nomCourt(cleFournisseur)}`;
 }
 
 /** Une phrase honnête sur ce que vaut ce fournisseur ici. */
@@ -331,7 +359,8 @@ function noteFournisseur(cle) {
     'inconnu': "Appels navigateur non vérifiés : si ça échoue, c'est le CORS.",
     'à configurer': '',
   }[f.cors] || '';
-  return [f.note, cors].filter(Boolean).join(' ');
+  const gratuit = f.gratuit ? `Gratuit : ${f.gratuit}.` : null;
+  return [gratuit, f.note, cors].filter(Boolean).join(' ');
 }
 
 function rendreReglages() {
@@ -344,8 +373,7 @@ function rendreReglages() {
   el.cleApi.placeholder = r.fournisseur === 'local' ? 'aucune clé nécessaire' : 'clé API';
   el.noteFournisseur.textContent = noteFournisseur(r.fournisseur);
 
-  el.lienCles.href = f.cles || '#';
-  el.lienCles.hidden = !f.cles;
+  majLienCles(el.lienCles, r.fournisseur);
   el.lienModeles.href = f.listeModeles || f.cles || '#';
   el.lienModeles.hidden = !(f.listeModeles || f.cles);
 
@@ -627,14 +655,21 @@ if (memoire.cleCourante || memoire.etat.reglages.fournisseur === 'local') {
   el.accueil.hidden = false;
   garnirFournisseurs(el.fournisseurAccueil);
   el.fournisseurAccueil.value = memoire.etat.reglages.fournisseur;
-  el.noteAccueil.textContent = noteFournisseur(el.fournisseurAccueil.value);
+  const majAccueil = () => {
+    const choix = el.fournisseurAccueil.value;
+    el.noteAccueil.textContent = noteFournisseur(choix);
+    majLienCles(el.lienClesAccueil, choix, true);
+    el.cleAccueil.value = memoire.cle(choix);
+    el.cleAccueil.placeholder =
+      choix === 'local' ? 'aucune clé nécessaire' : 'clé API';
+  };
+  majAccueil();
   el.fournisseurAccueil.addEventListener('change', () => {
     const f = FOURNISSEURS[el.fournisseurAccueil.value];
     memoire.etat.reglages.fournisseur = el.fournisseurAccueil.value;
     memoire.etat.reglages.modele = f.modeleParDefaut;
     memoire.sauver();
-    el.noteAccueil.textContent = noteFournisseur(el.fournisseurAccueil.value);
-    el.cleAccueil.value = memoire.cleCourante;
+    majAccueil();
   });
   el.btnAccueilOk.addEventListener('click', () => {
     const cle = el.cleAccueil.value.trim();

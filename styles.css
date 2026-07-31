@@ -428,6 +428,21 @@ body {
 }
 .bascule input { width: 17px; height: 17px; accent-color: var(--vif); }
 
+/* Lien d'action : « Créer une clé sur X » — il doit se repérer au premier
+   coup d'œil, c'est le geste attendu de l'utilisateur à cet instant. */
+.lien-fort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--vif) !important;
+  text-decoration: none;
+  border-bottom: 1px solid hsl(var(--teinte) 70% 62% / 0.4);
+  padding-bottom: 1px;
+}
+.lien-fort:hover { border-bottom-color: var(--vif); }
+
 .aide {
   font-size: 12.5px;
   color: var(--encre-douce);
@@ -511,7 +526,10 @@ body {
 .carte h2 { margin: 0 0 10px; font-size: 20px; }
 .carte p { margin: 0 0 12px; color: var(--encre-douce); font-size: 14px; }
 .carte strong { color: var(--encre); }
-.carte input {
+/* Le <select> doit être stylé explicitement : sans ça il garde l'apparence
+   native du navigateur et jure avec le reste de la carte. */
+.carte input,
+.carte select {
   width: 100%;
   padding: 11px 13px;
   border-radius: 12px;
@@ -519,8 +537,24 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: var(--encre);
   font: inherit;
+  font-size: 14px;
+  appearance: none;
+  -webkit-appearance: none;
 }
-.carte input:focus { outline: none; border-color: var(--vif); }
+.carte select {
+  margin-bottom: 9px;
+  cursor: pointer;
+  /* Chevron dessiné en SVG inline, puisque la flèche native disparaît. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%23a09cba' d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 11px;
+  padding-right: 34px;
+  text-overflow: ellipsis;
+}
+.carte select option { background: #14121f; color: var(--encre); }
+.carte input:focus,
+.carte select:focus { outline: none; border-color: var(--vif); }
 .carte code {
   background: rgba(255, 255, 255, 0.07);
   padding: 1px 5px;
