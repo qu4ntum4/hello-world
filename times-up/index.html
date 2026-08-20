@@ -1,0 +1,1610 @@
+<title>Chrono Mimes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Chrono Mimes — jeu de mime et de description pour enfants.
+   Le sablier est l'adversaire : il est dessiné au canvas, grain
+   par grain, et occupe le centre de l'interface.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root{
+  /* papier chaud, biaisé vers le rose : jamais un gris neutre */
+  --paper:#FFF7F1;
+  --paper-2:#FFEADC;
+  --surface:#FFFFFF;
+  --ink:#2B1B33;
+  --ink-2:#6E5876;
+  --line:#EBD6C7;
+
+  --grape:#6D3FC4;   /* structure */
+  --coral:#FF5A4E;   /* action */
+  --teal:#0E9E8F;    /* réussite */
+  --sand:#F3B43C;    /* le sablier — la seule vraie dépense de couleur */
+  --sand-deep:#D98E22;
+  --glass:rgba(43,27,51,.30);
+
+  --hard: 0 6px 0 rgba(43,27,51,.16);
+  --hard-lg: 0 10px 0 rgba(43,27,51,.14);
+  --r: 22px;
+
+  --display:"Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --body:"Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"DM Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#180F21;
+    --paper-2:#241631;
+    --surface:#2C1D39;
+    --ink:#FFF2E8;
+    --ink-2:#B79FC4;
+    --line:#3F2B4F;
+    --grape:#A87BF0;
+    --coral:#FF7C6D;
+    --teal:#35D6BF;
+    --sand:#FFC85A;
+    --sand-deep:#DC9C2C;
+    --glass:rgba(255,242,232,.34);
+    --hard: 0 6px 0 rgba(0,0,0,.45);
+    --hard-lg: 0 10px 0 rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#180F21;
+  --paper-2:#241631;
+  --surface:#2C1D39;
+  --ink:#FFF2E8;
+  --ink-2:#B79FC4;
+  --line:#3F2B4F;
+  --grape:#A87BF0;
+  --coral:#FF7C6D;
+  --teal:#35D6BF;
+  --sand:#FFC85A;
+  --sand-deep:#DC9C2C;
+  --glass:rgba(255,242,232,.34);
+  --hard: 0 6px 0 rgba(0,0,0,.45);
+  --hard-lg: 0 10px 0 rgba(0,0,0,.4);
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; margin:0; }
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:16px;
+  line-height:1.55;
+  -webkit-text-size-adjust:100%;
+  overscroll-behavior:none;
+}
+
+/* le fond : deux halos très doux, pas un dégradé de héros */
+#app{
+  position:relative;
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  isolation:isolate;
+  background:
+    radial-gradient(60% 45% at 12% 0%, color-mix(in srgb, var(--grape) 14%, transparent), transparent 70%),
+    radial-gradient(55% 40% at 92% 100%, color-mix(in srgb, var(--coral) 13%, transparent), transparent 70%);
+}
+
+#confetti{
+  position:fixed; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:60;
+}
+
+/* ── écrans ─────────────────────────────────────────────── */
+.screen{ display:none; }
+.screen.on{
+  display:flex;
+  flex-direction:column;
+  flex:1;
+  min-height:0;
+  width:100%;
+  max-width:560px;
+  margin:0 auto;
+  padding:22px 20px calc(22px + env(safe-area-inset-bottom));
+  gap:18px;
+}
+.screen.scrolls{ overflow-y:auto; }
+
+/* ── typographie ────────────────────────────────────────── */
+h1,h2,h3{ font-family:var(--display); font-weight:800; margin:0; text-wrap:balance; line-height:1.08; }
+h1{ font-size:clamp(2.6rem,11vw,3.6rem); letter-spacing:-.02em; }
+h2{ font-size:clamp(1.5rem,6vw,2rem); }
+h3{ font-size:1.06rem; font-weight:700; }
+p{ margin:0; }
+.lede{ color:var(--ink-2); font-size:1.02rem; max-width:44ch; }
+
+.eyebrow{
+  font-family:var(--mono);
+  font-size:.72rem;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--ink-2);
+}
+
+/* ── boutons ────────────────────────────────────────────── */
+.btn{
+  font-family:var(--display);
+  font-weight:700;
+  font-size:1.15rem;
+  color:var(--ink);
+  background:var(--surface);
+  border:2.5px solid var(--ink);
+  border-radius:18px;
+  padding:14px 20px;
+  cursor:pointer;
+  box-shadow:var(--hard);
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  text-align:center;
+}
+.btn:hover{ transform:translateY(-2px); box-shadow:0 8px 0 rgba(43,27,51,.18); }
+.btn:active{ transform:translateY(4px); box-shadow:0 2px 0 rgba(43,27,51,.18); }
+.btn:focus-visible{ outline:3px solid var(--grape); outline-offset:3px; }
+.btn[disabled]{ opacity:.45; cursor:not-allowed; transform:none; }
+
+.btn.primary{ background:var(--grape); color:#fff; border-color:var(--ink); }
+.btn.go{ background:var(--teal); color:#04231F; }
+.btn.warn{ background:var(--coral); color:#2B0F0C; }
+.btn.ghost{ background:transparent; border-color:var(--line); box-shadow:none; color:var(--ink-2); font-size:.95rem; padding:9px 14px; }
+.btn.ghost:hover{ color:var(--ink); border-color:var(--ink-2); transform:none; box-shadow:none; }
+.btn.block{ width:100%; }
+.btn.xl{ font-size:1.45rem; padding:20px; border-radius:22px; }
+
+/* ── accueil ────────────────────────────────────────────── */
+.hero{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:6px; padding-top:8px;
+}
+.wordmark{
+  font-family:var(--display); font-weight:800;
+  font-size:clamp(2.7rem,12vw,3.8rem);
+  line-height:.92; letter-spacing:-.03em;
+}
+.wordmark em{ font-style:normal; color:var(--grape); display:block; }
+.hero canvas{ width:132px; height:190px; }
+
+.modecard{
+  display:flex; gap:14px; align-items:flex-start; text-align:left;
+  width:100%; padding:16px 18px;
+  background:var(--surface); border:2.5px solid var(--ink); border-radius:var(--r);
+  box-shadow:var(--hard); cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
+  font-family:var(--body); color:var(--ink);
+}
+.modecard:hover{ transform:translateY(-3px); box-shadow:var(--hard-lg); }
+.modecard:active{ transform:translateY(4px); box-shadow:0 2px 0 rgba(43,27,51,.18); }
+.modecard:focus-visible{ outline:3px solid var(--grape); outline-offset:3px; }
+.modecard .pic{
+  font-size:2rem; line-height:1; flex:none;
+  width:54px; height:54px; display:grid; place-items:center;
+  background:var(--paper-2); border-radius:16px; border:2px solid var(--line);
+}
+.modecard b{ font-family:var(--display); font-size:1.25rem; display:block; }
+.modecard span{ color:var(--ink-2); font-size:.92rem; }
+
+/* ── panneaux de réglages ───────────────────────────────── */
+.panel{
+  background:var(--surface); border:2.5px solid var(--line); border-radius:var(--r);
+  padding:16px 16px 18px; display:flex; flex-direction:column; gap:12px;
+}
+.panel > h3{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.hint{ color:var(--ink-2); font-size:.87rem; }
+
+.chips{ display:flex; flex-wrap:wrap; gap:8px; }
+.chip{
+  font-family:var(--body); font-weight:700; font-size:.92rem;
+  padding:9px 14px; border-radius:999px; cursor:pointer;
+  background:var(--paper-2); color:var(--ink-2);
+  border:2px solid transparent;
+  transition:background .12s ease, color .12s ease, border-color .12s ease;
+}
+.chip:hover{ color:var(--ink); }
+.chip:focus-visible{ outline:3px solid var(--grape); outline-offset:2px; }
+.chip[aria-pressed="true"]{ background:var(--grape); color:#fff; border-color:var(--ink); }
+.chip small{ font-family:var(--mono); font-size:.72em; opacity:.75; margin-left:6px; }
+
+.seg{ display:flex; gap:6px; background:var(--paper-2); padding:5px; border-radius:14px; }
+.seg button{
+  flex:1; font-family:var(--mono); font-size:.9rem; font-weight:500;
+  padding:9px 4px; border:0; border-radius:10px; cursor:pointer;
+  background:transparent; color:var(--ink-2);
+}
+.seg button:focus-visible{ outline:3px solid var(--grape); outline-offset:2px; }
+.seg button[aria-pressed="true"]{ background:var(--surface); color:var(--ink); box-shadow:0 2px 0 var(--line); font-weight:500; }
+
+.row{ display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.row .txt b{ display:block; font-weight:700; }
+.row .txt span{ color:var(--ink-2); font-size:.85rem; }
+
+.switch{ position:relative; flex:none; width:56px; height:32px; }
+.switch input{ position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.switch i{
+  position:absolute; inset:0; border-radius:999px; background:var(--paper-2);
+  border:2px solid var(--line); transition:background .15s ease, border-color .15s ease;
+  pointer-events:none;
+}
+.switch i::after{
+  content:""; position:absolute; top:3px; left:3px; width:22px; height:22px;
+  border-radius:50%; background:var(--ink-2); transition:transform .15s ease, background .15s ease;
+}
+.switch input:checked + i{ background:color-mix(in srgb, var(--teal) 28%, transparent); border-color:var(--teal); }
+.switch input:checked + i::after{ transform:translateX(24px); background:var(--teal); }
+.switch input:focus-visible + i{ outline:3px solid var(--grape); outline-offset:3px; }
+
+.field{ display:flex; gap:8px; }
+input[type="text"]{
+  flex:1; min-width:0;
+  font-family:var(--body); font-size:1rem; color:var(--ink);
+  background:var(--paper-2); border:2px solid var(--line); border-radius:14px;
+  padding:11px 14px;
+}
+input[type="text"]::placeholder{ color:var(--ink-2); opacity:.75; }
+input[type="text"]:focus{ outline:none; border-color:var(--grape); }
+
+.taglist{ display:flex; flex-wrap:wrap; gap:7px; }
+.tag{
+  display:inline-flex; align-items:center; gap:7px;
+  background:var(--paper-2); border:2px solid var(--line); border-radius:999px;
+  padding:5px 6px 5px 13px; font-size:.9rem; font-weight:600;
+}
+.tag button{
+  border:0; background:transparent; cursor:pointer; color:var(--ink-2);
+  font-size:1rem; line-height:1; padding:2px 5px; border-radius:50%;
+}
+.tag button:hover{ color:var(--coral); }
+.tag button:focus-visible{ outline:2px solid var(--grape); outline-offset:1px; }
+
+.teamrow{ display:flex; align-items:center; gap:10px; }
+.dot{ width:16px; height:16px; border-radius:50%; flex:none; border:2px solid var(--ink); }
+
+.err{ color:var(--coral); font-weight:700; font-size:.9rem; }
+
+/* ── écran d'annonce de manche ──────────────────────────── */
+.announce{ flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:16px; }
+.badge{
+  font-family:var(--mono); font-size:.78rem; letter-spacing:.14em; text-transform:uppercase;
+  background:var(--ink); color:var(--paper); padding:7px 14px; border-radius:999px;
+}
+.mancheicon{ font-size:3.6rem; line-height:1; }
+.rulebox{
+  background:var(--surface); border:2.5px dashed var(--line); border-radius:var(--r);
+  padding:16px 18px; color:var(--ink-2); max-width:42ch; font-size:.98rem;
+}
+.rulebox strong{ color:var(--ink); }
+
+/* ── jeu ────────────────────────────────────────────────── */
+#s-play{ gap:12px; }
+.hud{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.hud .who{ min-width:0; }
+.hud .who b{ font-family:var(--display); font-size:1.15rem; display:block; line-height:1.15;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hud .who span{ font-family:var(--mono); font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); }
+.hud .tools{ display:flex; gap:6px; flex:none; }
+.icobtn{
+  width:40px; height:40px; border-radius:12px; cursor:pointer;
+  background:var(--paper-2); border:2px solid var(--line); color:var(--ink);
+  font-size:1.05rem; display:grid; place-items:center;
+}
+.icobtn:hover{ border-color:var(--ink-2); }
+.icobtn:focus-visible{ outline:3px solid var(--grape); outline-offset:2px; }
+
+.timerbar{ display:flex; align-items:center; gap:14px; }
+.timerbar canvas{ width:62px; height:88px; flex:none; }
+.clock{ font-family:var(--mono); font-size:2.6rem; font-weight:500; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.clock.low{ color:var(--coral); }
+.tallies{ margin-left:auto; text-align:right; }
+.tallies b{ font-family:var(--mono); font-size:1.5rem; font-variant-numeric:tabular-nums; display:block; line-height:1.1; }
+.tallies span{ font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); }
+
+.cardstage{ flex:1; min-height:180px; display:grid; grid-template:1fr / 1fr; place-items:center; position:relative; }
+.cardstage::before,
+.cardstage::after{
+  content:""; position:absolute; inset:2.5% 2%; border-radius:26px;
+  border:2.5px solid var(--line); background:var(--surface); z-index:0;
+}
+.cardstage::before{ transform:rotate(-3.2deg) translateY(7px); }
+.cardstage::after{ transform:rotate(2.4deg) translateY(4px); }
+
+.card{
+  grid-area:1 / 1;
+  position:relative; z-index:1;
+  width:100%; height:100%;
+  background:var(--surface); border:3px solid var(--ink); border-radius:26px;
+  box-shadow:var(--hard-lg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; padding:20px; text-align:center;
+}
+.card .art{ font-size:clamp(4rem,23vw,7rem); line-height:1; }
+.card .word{
+  font-family:var(--display); font-weight:800;
+  font-size:clamp(1.7rem,8vw,2.5rem); line-height:1.05; text-wrap:balance;
+}
+.card .theme{
+  font-family:var(--mono); font-size:.68rem; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-2); margin-top:2px;
+}
+.card.ghost{ z-index:2; pointer-events:none; }
+.card.out-right{ animation:flyR .26s ease-in forwards; }
+.card.out-left{ animation:flyL .26s ease-in forwards; }
+.card.in{ animation:drop .24s cubic-bezier(.2,1.4,.5,1); }
+@keyframes flyR{ to{ transform:translateX(130%) rotate(14deg); opacity:0; } }
+@keyframes flyL{ to{ transform:translateX(-130%) rotate(-14deg); opacity:0; } }
+@keyframes drop{ from{ transform:scale(.9) translateY(-14px); opacity:0; } }
+
+.actions{ display:flex; flex-direction:column; gap:9px; }
+.actions .pair{ display:flex; gap:9px; }
+.actions .pair .btn{ flex:1; }
+
+.toast{
+  position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  background:var(--ink); color:var(--paper);
+  font-family:var(--display); font-weight:700; font-size:1rem;
+  padding:11px 20px; border-radius:999px; z-index:50;
+  animation:pop 2.4s ease forwards; pointer-events:none; white-space:nowrap;
+}
+@keyframes pop{
+  0%{ opacity:0; transform:translate(-50%,14px); }
+  12%,80%{ opacity:1; transform:translate(-50%,0); }
+  100%{ opacity:0; transform:translate(-50%,-8px); }
+}
+
+/* ── récap / fin ────────────────────────────────────────── */
+.recap{ display:flex; flex-wrap:wrap; gap:7px; }
+.recap li{
+  list-style:none; display:inline-flex; align-items:center; gap:7px;
+  background:var(--paper-2); border-radius:12px; padding:6px 12px;
+  font-size:.92rem; font-weight:600;
+}
+.recap li.miss{ opacity:.5; text-decoration:line-through; }
+ul{ margin:0; padding:0; }
+
+.score{ width:100%; border-collapse:collapse; font-size:.95rem; }
+.score th, .score td{ padding:10px 8px; text-align:right; border-bottom:2px solid var(--line); }
+.score th:first-child, .score td:first-child{ text-align:left; }
+.score thead th{
+  font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:500;
+}
+.score td{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+.score td:first-child{ font-family:var(--body); font-weight:700; display:flex; align-items:center; gap:8px; }
+.score .tot{ font-weight:700; color:var(--ink); font-size:1.1rem; }
+.score tr.win td{ color:var(--teal); }
+
+.verdict{ text-align:center; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.verdict .big{ font-size:3.4rem; line-height:1; }
+
+.crownlist{ display:flex; flex-wrap:wrap; gap:8px; }
+.crowned{
+  font-family:var(--display); font-size:1.5rem; text-align:center;
+  color:var(--grape); padding:6px 0;
+}
+
+/* ── règles ─────────────────────────────────────────────── */
+.rules h3{ margin-top:4px; }
+.rules p{ color:var(--ink-2); font-size:.95rem; }
+.rules ol{ margin:0; padding-left:1.2em; color:var(--ink-2); font-size:.95rem; display:flex; flex-direction:column; gap:8px; }
+.rules ol strong{ color:var(--ink); }
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+}
+</style>
+
+<div id="app" data-screen="home">
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <!-- ────────── ACCUEIL ────────── -->
+  <section class="screen on scrolls" id="s-home">
+    <div class="hero">
+      <canvas id="heroGlass" aria-hidden="true"></canvas>
+      <div class="wordmark">Chrono<em>Mimes</em></div>
+      <p class="lede">Fais deviner un maximum de cartes avant que le sable ne soit tombé.</p>
+    </div>
+
+    <button class="modecard" data-mode="coop">
+      <span class="pic" aria-hidden="true">🤝</span>
+      <span>
+        <b>Tous ensemble</b>
+        <span>2 manches, un seul sablier pour toute la partie. Personne ne perd tout seul.</span>
+      </span>
+    </button>
+
+    <button class="modecard" data-mode="teams">
+      <span class="pic" aria-hidden="true">⚔️</span>
+      <span>
+        <b>En équipes</b>
+        <span>3 manches sur le même paquet : on parle, puis un seul mot, puis on mime.</span>
+      </span>
+    </button>
+
+    <button class="btn ghost" id="toRules">Comment on joue ?</button>
+  </section>
+
+  <!-- ────────── RÉGLAGES ────────── -->
+  <section class="screen scrolls" id="s-setup">
+    <div>
+      <p class="eyebrow" id="setupMode"></p>
+      <h2>Préparer la partie</h2>
+    </div>
+
+    <div class="panel">
+      <h3>Thèmes des cartes</h3>
+      <div class="chips" id="themeChips"></div>
+      <p class="hint" id="deckInfo"></p>
+    </div>
+
+    <div class="panel">
+      <h3>Vos propres cartes</h3>
+      <p class="hint">Les prénoms de la famille, le chien, le prof de sport… Elles se mélangent aux autres.</p>
+      <div class="field">
+        <input type="text" id="customInput" placeholder="Ex : le chat de mamie" maxlength="40" autocomplete="off">
+        <button class="btn" id="customAdd" style="padding:11px 18px;font-size:1rem">Ajouter</button>
+      </div>
+      <ul class="taglist" id="customList"></ul>
+    </div>
+
+    <div class="panel" id="panelCoop">
+      <h3>Le sablier</h3>
+      <div class="seg" id="segCoopTime" role="group" aria-label="Durée totale de la partie"></div>
+      <p class="hint">Le sablier tourne pendant les deux manches, sans s'arrêter.</p>
+      <h3 style="margin-top:6px">Nombre de cartes</h3>
+      <div class="seg" id="segCoopCards" role="group" aria-label="Nombre de cartes"></div>
+    </div>
+
+    <div class="panel" id="panelTeams">
+      <h3>Temps par tour</h3>
+      <div class="seg" id="segTurn" role="group" aria-label="Temps par tour"></div>
+      <h3 style="margin-top:6px">Taille du paquet</h3>
+      <div class="seg" id="segDeck" role="group" aria-label="Taille du paquet"></div>
+      <p class="hint">Le même paquet est rejoué aux 3 manches, à chaque fois plus dur.</p>
+      <h3 style="margin-top:6px">Équipes</h3>
+      <div class="seg" id="segTeamCount" role="group" aria-label="Nombre d'équipes"></div>
+      <div id="teamNames" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Les joueurs <span class="hint" style="font-weight:400">facultatif</span></h3>
+      <p class="hint" id="playersHint"></p>
+      <div class="field">
+        <input type="text" id="playerInput" placeholder="Prénom" maxlength="18" autocomplete="off">
+        <button class="btn" id="playerAdd" style="padding:11px 18px;font-size:1rem">Ajouter</button>
+      </div>
+      <ul class="taglist" id="playerList"></ul>
+    </div>
+
+    <div class="panel">
+      <h3>Options</h3>
+      <div class="row">
+        <span class="txt"><b>Sons et vibrations</b><span>Bip du compte à rebours, sonnerie de fin.</span></span>
+        <label class="switch"><input type="checkbox" id="optSound" checked><i></i></label>
+      </div>
+      <div class="row" id="rowPass">
+        <span class="txt"><b>Passer une carte à toutes les manches</b><span>La règle officielle ne l'autorise qu'à la manche 1.</span></span>
+        <label class="switch"><input type="checkbox" id="optPass"><i></i></label>
+      </div>
+      <div class="row" id="rowChain">
+        <span class="txt"><b>Enchaîner les manches</b><span>Règle officielle : si le paquet se vide, tu continues sur la manche suivante avec le temps qui te reste.</span></span>
+        <label class="switch"><input type="checkbox" id="optChain" checked><i></i></label>
+      </div>
+    </div>
+
+    <p class="err" id="setupErr" hidden></p>
+    <button class="btn primary block xl" id="startGame">C'est parti !</button>
+    <button class="btn ghost" id="backHome">← Changer de mode</button>
+  </section>
+
+  <!-- ────────── ANNONCE DE MANCHE ────────── -->
+  <section class="screen" id="s-intro">
+    <div class="announce">
+      <p class="badge" id="introBadge"></p>
+      <div class="mancheicon" id="introIcon" aria-hidden="true"></div>
+      <h2 id="introTitle"></h2>
+      <p class="rulebox" id="introRule"></p>
+      <p class="lede" id="introWho"></p>
+    </div>
+    <button class="btn go block xl" id="introGo">Démarrer</button>
+  </section>
+
+  <!-- ────────── JEU ────────── -->
+  <section class="screen" id="s-play">
+    <div class="hud">
+      <span class="who"><span id="hudRound"></span><b id="hudWho"></b></span>
+      <span class="tools">
+        <button class="icobtn" id="btnSound" aria-label="Couper le son">🔊</button>
+        <button class="icobtn" id="btnHand" aria-label="Changer de meneur" title="Passer la main">⇄</button>
+        <button class="icobtn" id="btnQuit" aria-label="Quitter la partie">✕</button>
+      </span>
+    </div>
+
+    <div class="timerbar">
+      <canvas id="glass" aria-hidden="true"></canvas>
+      <span class="clock" id="clock" role="timer" aria-live="off">0:30</span>
+      <span class="tallies"><b id="tally">0</b><span id="tallyLabel">trouvées</span></span>
+    </div>
+
+    <div class="cardstage">
+      <article class="card" id="card">
+        <span class="art" id="cardArt" aria-hidden="true">🎭</span>
+        <span class="word" id="cardWord">Prêt ?</span>
+        <span class="theme" id="cardTheme"></span>
+      </article>
+    </div>
+
+    <div class="actions">
+      <button class="btn go block xl" id="btnFound">Trouvé !</button>
+      <div class="pair">
+        <button class="btn warn" id="btnSkip">Passer</button>
+        <button class="btn" id="btnStop">Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────── FIN DE TOUR ────────── -->
+  <section class="screen scrolls" id="s-turnend">
+    <div>
+      <p class="eyebrow" id="teEyebrow"></p>
+      <h2 id="teTitle"></h2>
+    </div>
+    <ul class="recap" id="teRecap"></ul>
+    <div class="panel"><table class="score" id="teScore"></table></div>
+    <div style="flex:1"></div>
+    <button class="btn primary block xl" id="teNext"></button>
+  </section>
+
+  <!-- ────────── FIN DE PARTIE ────────── -->
+  <section class="screen scrolls" id="s-end">
+    <div class="verdict">
+      <span class="big" id="endIcon" aria-hidden="true"></span>
+      <h2 id="endTitle"></h2>
+      <p class="lede" id="endLine" style="text-align:center"></p>
+    </div>
+
+    <div class="panel" id="endScorePanel"><table class="score" id="endScore"></table></div>
+
+    <div class="panel" id="mvpPanel">
+      <h3>Le trophée du meilleur mime</h3>
+      <p class="hint">Votez ! Celui ou celle qui vous a le plus fait rire.</p>
+      <div class="crownlist" id="mvpList"></div>
+      <p class="crowned" id="mvpResult" hidden></p>
+    </div>
+
+    <div class="panel">
+      <h3>Les cartes de la partie</h3>
+      <ul class="recap" id="endRecap"></ul>
+    </div>
+
+    <div style="flex:1"></div>
+    <button class="btn primary block xl" id="endAgain">Rejouer</button>
+    <button class="btn ghost" id="endHome">← Retour à l'accueil</button>
+  </section>
+
+  <!-- ────────── RÈGLES ────────── -->
+  <section class="screen scrolls rules" id="s-rules">
+    <div>
+      <p class="eyebrow">Le mode d'emploi</p>
+      <h2>Comment on joue</h2>
+    </div>
+
+    <div class="panel">
+      <h3>🤝 Tous ensemble</h3>
+      <p>Tout le monde joue dans le même camp — l'adversaire, c'est le sablier. On tire un paquet de cartes et on doit le faire deviner <strong>deux fois</strong> avant que le sable soit tombé.</p>
+      <ol>
+        <li><strong>Manche 1 — Décris.</strong> Tu parles autant que tu veux, mais jamais un mot écrit sur la carte.</li>
+        <li><strong>Manche 2 — Mime.</strong> Les mêmes cartes, mélangées, sans dire un mot.</li>
+      </ol>
+      <p>Le meneur change de main régulièrement : passez le téléphone, le sablier ne s'arrête pas.</p>
+    </div>
+
+    <div class="panel">
+      <h3>⚔️ En équipes</h3>
+      <p>Deux équipes ou plus. Un même paquet est rejoué trois fois : à chaque manche les cartes sont déjà connues de tous, mais il devient de plus en plus difficile de les faire deviner.</p>
+      <ol>
+        <li><strong>Manche 1 — Tout est permis.</strong> Parle autant que tu veux. Interdit : un mot de la carte, sa traduction, ou « ça rime avec ».</li>
+        <li><strong>Manche 2 — Un seul mot.</strong> Un mot, une seule fois, et puis plus rien. Ton équipe peut proposer autant de réponses qu'elle veut.</li>
+        <li><strong>Manche 3 — Mime.</strong> Silence complet. Les bruitages sont tolérés, les mots non.</li>
+      </ol>
+      <p>Chaque carte devinée vaut 1 point. Quand le paquet est vide, la manche s'arrête — et l'orateur en cours enchaîne sur la manche suivante avec le temps qui lui restait. C'est la vraie règle, et c'est là que tout se joue.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Passer une carte</h3>
+      <p>Officiellement, on ne peut jeter une carte qu'à la manche 1 — elle retourne alors au fond du paquet. Aux manches suivantes, il faut aller au bout. Une option des réglages permet d'autoriser la passe partout, pour les plus jeunes.</p>
+    </div>
+
+    <button class="btn primary block" id="rulesBack">J'ai compris</button>
+  </section>
+</div>
+
+<script>
+"use strict";
+(function(){
+
+/* ══════════════════════════════════════════════════════════
+   1. LES CARTES
+   ══════════════════════════════════════════════════════════ */
+
+const THEMES = {
+  animaux: { label:"Animaux", icon:"🦎", cards:
+    "🦎 Caméléon;🐙 Pieuvre;🦔 Hérisson;🦥 Paresseux;🦇 Chauve-souris;🦭 Phoque;🦘 Kangourou;"+
+    "🦩 Flamant rose;🪲 Scarabée;🪼 Méduse;🦦 Loutre;🐼 Panda géant;🦙 Alpaga;🦜 Perroquet;"+
+    "🐊 Crocodile;🐌 Escargot;🦉 Hibou;🦈 Requin;🦒 Girafe;🐞 Coccinelle;🐫 Chameau;"+
+    "🦝 Raton laveur;🦨 Mouffette;🦞 Homard;🐝 Abeille;🪱 Ver de terre;🐆 Guépard;🐬 Dauphin;"+
+    "🐢 Tortue;🦂 Scorpion;🐺 Loup;🦡 Blaireau;🐗 Sanglier;🦆 Canard;🐴 Cheval de course;"+
+    "🦋 Papillon;🕷️ Araignée;🦏 Rhinocéros;🐧 Manchot;🦚 Paon" },
+
+  objets: { label:"Objets", icon:"🧹", cards:
+    "🧹 Balai;☂️ Parapluie;⏰ Réveil;🪥 Brosse à dents;🔦 Lampe de poche;🪜 Échelle;🧯 Extincteur;"+
+    "🪠 Ventouse;🧺 Panier à linge;🛋️ Canapé;🚿 Douche;🧊 Glaçon;🍳 Poêle à frire;🫖 Bouilloire;"+
+    "🔑 Trousseau de clés;🧲 Aimant;🪞 Miroir;🧸 Vieille peluche;🎈 Ballon de baudruche;🪁 Cerf-volant;"+
+    "🛒 Caddie;🩹 Pansement;🧻 Papier toilette;📎 Trombone;✂️ Ciseaux;🖍️ Feutre qui ne marche plus;"+
+    "🕰️ Horloge à coucou;🚪 Porte qui grince;🛏️ Lit superposé;🧦 Chaussette trouée;👟 Basket qui pue;"+
+    "🧳 Valise à roulettes;🔌 Prise électrique;🪑 Chaise pliante;🥁 Batterie;🎷 Saxophone;"+
+    "🔭 Télescope;🧭 Boussole;🪣 Seau percé;🎿 Paire de skis" },
+
+  metiers: { label:"Métiers & personnages", icon:"🥷", cards:
+    "🚒 Pompier;🩺 Vétérinaire;🏺 Archéologue;🧑‍🚀 Astronaute;🔧 Plombier;🥖 Boulanger;🛡️ Chevalier;"+
+    "🏴‍☠️ Pirate;🎩 Magicien;🦷 Dentiste;🌱 Jardinier;🧙 Sorcière;📮 Facteur;🎬 Cascadeur;"+
+    "🐝 Apiculteur;🧛 Vampire;🎼 Chef d'orchestre;📹 Youtubeur;🕵️ Détective;🧟 Zombie;🤖 Robot;"+
+    "👽 Extraterrestre;👑 Roi;🎪 Funambule;🤡 Clown;🥷 Ninja;⚔️ Samouraï;🪓 Viking;🤠 Cow-boy;"+
+    "🦸 Super-héros;🧮 Prof de maths;💇 Coiffeur;🎣 Pêcheur;🎭 Comédien;🚕 Chauffeur de taxi;"+
+    "🧑‍🍳 Grand chef;🏋️ Haltérophile;🧜 Sirène;🚁 Pilote d'hélicoptère;💃 Danseuse de flamenco" },
+
+  nature: { label:"Actions & nature", icon:"🌪️", cards:
+    "🤧 Éternuer;🥱 Bâiller;🚴 Faire du vélo;🤿 Plonger;😴 Ronfler;🧗 Escalader;🤫 Chuchoter;"+
+    "🌈 Arc-en-ciel;🌪️ Tornade;🌋 Volcan;🏔️ Avalanche;💦 Cascade;🌒 Éclipse;🌊 Grosse vague;"+
+    "🫨 Tremblement de terre;🌫️ Brouillard;🥵 Canicule;⛈️ Orage;🔥 Feu de camp;🏊 Nager;🤹 Jongler;"+
+    "😗 Siffler;⛸️ Patiner;🌳 Grimper à un arbre;🏖️ Château de sable;😮‍💨 Avoir le hoquet;"+
+    "🌧️ Courir sous la pluie;🌱 Planter une graine;🏜️ Désert;🧊 Banquise;🌠 Étoile filante;"+
+    "♨️ Geyser;🍂 Automne;❄️ Tempête de neige;🐛 Chenille qui devient papillon;🌵 Cactus;"+
+    "🍄 Champignon;⚡ Éclair;🌙 Nuit noire;🪂 Sauter en parachute" },
+
+  fun: { label:"Trucs rigolos", icon:"🦄", cards:
+    "🦄 Licorne qui éternue;🕺 Robot qui danse;🧟 Zombie affamé;🍍 Pizza à l'ananas;"+
+    "📶 Wifi qui coupe;⏰ Réveil un lundi matin;💃 Danser la macarena;🎤 Karaoké faux;"+
+    "💧 Bataille d'eau;🧪 Slime qui déborde;🛹 Mamie en skateboard;🐔 Poulet qui traverse la route;"+
+    "🦧 Cri de Tarzan;🥷 Ninja en pyjama;🤳 Selfie raté;🧱 Marcher sur un Lego;🍋 Croquer un citron;"+
+    "🐱 Chat qui tombe dans la baignoire;🎂 Souffler 100 bougies;🍦 Glace qui tombe par terre;"+
+    "🦖 Dinosaure qui fait du yoga;🚀 Fusée qui décolle;🎢 Grand huit;🐍 Serpent qui a le hoquet;"+
+    "🧀 Souris voleuse de fromage;👻 Fantôme timide;🐧 Manchot qui glisse;🤖 Bug informatique;"+
+    "🍝 Spaghetti dans la barbe;🐘 Éléphant sur un trampoline;🧦 Chaussette perdue dans le sèche-linge;"+
+    "🚗 Embouteillage;🐟 Poisson d'avril;🎁 Cadeau décevant;🤒 Faire semblant d'être malade;"+
+    "🦆 Canard en colère;🎻 Violon qui grince;🍔 Burger trop gros pour la bouche;"+
+    "🦩 Flamant rose qui fait du yoga;🐒 Singe qui pique les lunettes" },
+};
+
+for (const key in THEMES){
+  THEMES[key].list = THEMES[key].cards.split(";").map(function(s){
+    const t = s.trim();
+    const sp = t.indexOf(" ");
+    return { art: t.slice(0, sp), word: t.slice(sp + 1), theme: THEMES[key].label };
+  });
+}
+
+const MANCHES = {
+  coop: [
+    { icon:"🗣️", title:"Décris !",
+      rule:"Parle autant que tu veux pour faire deviner la carte. <strong>Interdit</strong> : dire un mot écrit sur la carte." },
+    { icon:"🤸", title:"Mime !",
+      rule:"Les mêmes cartes, mélangées — et cette fois <strong>sans dire un seul mot</strong>. Que des gestes." },
+  ],
+  teams: [
+    { icon:"🗣️", title:"Tout est permis",
+      rule:"Parle autant que tu veux. <strong>Interdit</strong> : un mot de la carte, sa traduction, ou « ça rime avec »." },
+    { icon:"☝️", title:"Un seul mot",
+      rule:"<strong>Un seul mot</strong> par carte, dit une seule fois. Ton équipe peut proposer autant de réponses qu'elle veut." },
+    { icon:"🤸", title:"Mime",
+      rule:"Silence complet. Que des gestes — les <strong>bruitages sont tolérés</strong>, les mots jamais." },
+  ],
+};
+
+const TEAM_COLORS = ["#FF5A4E", "#0E9E8F", "#F3B43C", "#6D3FC4"];
+const TEAM_NAMES  = ["Les Tigres", "Les Fusées", "Les Cactus", "Les Pingouins"];
+
+/* ══════════════════════════════════════════════════════════
+   2. RÉGLAGES PERSISTANTS
+   ══════════════════════════════════════════════════════════ */
+
+const DEFAULTS = {
+  themes: ["animaux", "objets", "metiers", "nature", "fun"],
+  custom: [],
+  players: [],
+  teamNames: TEAM_NAMES.slice(0, 2),
+  teamCount: 2,
+  coopMinutes: 10,
+  coopCards: 20,
+  turnSeconds: 30,
+  deckSize: 30,
+  sound: true,
+  passAlways: false,
+  chain: true,
+};
+
+let cfg = Object.assign({}, DEFAULTS);
+
+function loadCfg(){
+  try{
+    const raw = localStorage.getItem("chrono-mimes");
+    if (raw) cfg = Object.assign({}, DEFAULTS, JSON.parse(raw));
+  }catch(e){ /* stockage indisponible : on garde les valeurs par défaut */ }
+  if (!Array.isArray(cfg.themes) || !cfg.themes.length) cfg.themes = DEFAULTS.themes.slice();
+}
+function saveCfg(){
+  try{ localStorage.setItem("chrono-mimes", JSON.stringify(cfg)); }catch(e){}
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. SON
+   ══════════════════════════════════════════════════════════ */
+
+let ac = null;
+function audio(){
+  if (!cfg.sound) return null;
+  try{
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === "suspended") ac.resume();
+    return ac;
+  }catch(e){ return null; }
+}
+function tone(freq, dur, type, vol, delay){
+  const c = audio(); if (!c) return;
+  const t0 = c.currentTime + (delay || 0);
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type || "triangle";
+  o.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol || 0.22, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function buzz(ms){
+  if (!cfg.sound) return;
+  try{ if (navigator.vibrate) navigator.vibrate(ms); }catch(e){}
+}
+const SFX = {
+  found(){ tone(660, .1, "triangle", .2); tone(990, .16, "triangle", .18, .08); buzz(25); },
+  skip(){  tone(230, .12, "sine", .16); buzz(15); },
+  tick(){  tone(1180, .05, "square", .07); },
+  end(){   tone(180, .5, "sawtooth", .2); tone(120, .6, "sawtooth", .16, .06); buzz([180,90,220]); },
+  win(){   [523,659,784,1047].forEach(function(f,i){ tone(f, .3, "triangle", .18, i*0.1); }); buzz([40,60,40]); },
+  lose(){  [440,392,330,262].forEach(function(f,i){ tone(f, .32, "sine", .16, i*0.13); }); },
+  round(){ tone(880, .14, "triangle", .18); tone(1320, .2, "triangle", .14, .11); },
+};
+
+/* ══════════════════════════════════════════════════════════
+   4. LE SABLIER (canvas)
+   ══════════════════════════════════════════════════════════ */
+
+let paletteCache = null, paletteAt = 0;
+function readVar(name){
+  const now = performance.now();
+  if (!paletteCache || now - paletteAt > 800){
+    const cs = getComputedStyle(document.documentElement);
+    paletteCache = {};
+    ["--sand","--sand-deep","--glass","--grape","--surface","--coral","--teal"]
+      .forEach(function(k){ paletteCache[k] = cs.getPropertyValue(k).trim(); });
+    paletteAt = now;
+  }
+  return paletteCache[name] || "";
+}
+
+function drawGlass(cv, p, t){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return;
+  if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  p = Math.max(0, Math.min(1, p));
+  const cx = w/2, capH = Math.max(5, h*0.045);
+  const top = capH, bot = h - capH, mid = h/2;
+  const HW = w*0.40;            // demi-largeur des ampoules
+  const NW = Math.max(2.2, w*0.055); // demi-largeur du col
+  const Ht = mid - top, Hb = bot - mid;
+
+  const sand = readVar("--sand") || "#F3B43C";
+  const sandDeep = readVar("--sand-deep") || "#D98E22";
+  const glass = readVar("--glass") || "rgba(0,0,0,.16)";
+  const grape = readVar("--grape") || "#6D3FC4";
+
+  function bulbTop(){
+    ctx.beginPath();
+    ctx.moveTo(cx-HW, top); ctx.lineTo(cx+HW, top);
+    ctx.lineTo(cx+NW, mid); ctx.lineTo(cx-NW, mid);
+    ctx.closePath();
+  }
+  function bulbBot(){
+    ctx.beginPath();
+    ctx.moveTo(cx-NW, mid); ctx.lineTo(cx+NW, mid);
+    ctx.lineTo(cx+HW, bot); ctx.lineTo(cx-HW, bot);
+    ctx.closePath();
+  }
+
+  // — sable restant dans l'ampoule haute (aire ∝ hauteur², donc √) —
+  const k = Math.sqrt(1 - p);
+  if (k > 0.004){
+    const yTop = mid - Ht*k;
+    const wTop = NW + (HW - NW)*k;
+    ctx.save(); bulbTop(); ctx.clip();
+    const g = ctx.createLinearGradient(0, yTop, 0, mid);
+    g.addColorStop(0, sand); g.addColorStop(1, sandDeep);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(cx-wTop, yTop); ctx.lineTo(cx+wTop, yTop);
+    ctx.lineTo(cx+NW, mid); ctx.lineTo(cx-NW, mid);
+    ctx.closePath(); ctx.fill();
+    // creux d'entonnoir à la surface
+    ctx.fillStyle = readVar("--surface") || "#fff";
+    ctx.globalAlpha = .9;
+    ctx.beginPath();
+    ctx.ellipse(cx, yTop, wTop*0.92, Math.min(6, wTop*0.3), 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // — tas accumulé en bas —
+  const kb = Math.sqrt(1 - Math.max(0, Math.min(1, p)));
+  const pileH = Hb * (1 - kb);
+  if (pileH > 0.004){
+    ctx.save(); bulbBot(); ctx.clip();
+    const g2 = ctx.createLinearGradient(0, bot-pileH, 0, bot);
+    g2.addColorStop(0, sand); g2.addColorStop(1, sandDeep);
+    ctx.fillStyle = g2;
+    const yP = bot - pileH;
+    const wP = NW + (HW - NW)*(1 - kb);
+    ctx.beginPath();
+    ctx.moveTo(cx-HW, bot); ctx.lineTo(cx+HW, bot);
+    ctx.lineTo(cx+wP, yP);
+    ctx.quadraticCurveTo(cx, yP - Math.min(9, pileH*0.35), cx-wP, yP);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // — le filet qui tombe —
+  if (p > 0.001 && p < 0.999){
+    ctx.save(); bulbBot(); ctx.clip();
+    ctx.fillStyle = sandDeep;
+    const yEnd = bot - pileH;
+    for (let i = 0; i < 7; i++){
+      const ph = ((t*0.0016) + i/7) % 1;
+      const y = mid + ph*(yEnd - mid);
+      if (y >= yEnd) continue;
+      const jitter = Math.sin((t*0.01) + i*2.3) * (NW*0.35);
+      ctx.beginPath();
+      ctx.arc(cx + jitter*ph, y, Math.max(1, w*0.016), 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // — le verre —
+  ctx.strokeStyle = glass;
+  ctx.lineWidth = Math.max(1.6, w*0.028);
+  ctx.lineJoin = "round";
+  bulbTop(); ctx.stroke();
+  bulbBot(); ctx.stroke();
+
+  // — les montures —
+  ctx.fillStyle = grape;
+  const r = Math.min(4, capH*0.6);
+  roundRect(ctx, cx-HW-w*0.05, 0, (HW+w*0.05)*2, capH, r); ctx.fill();
+  roundRect(ctx, cx-HW-w*0.05, h-capH, (HW+w*0.05)*2, capH, r); ctx.fill();
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+/* sablier décoratif de l'accueil : boucle de 6 s */
+(function heroLoop(){
+  const cv = document.getElementById("heroGlass");
+  function frame(t){
+    if (document.getElementById("app").dataset.screen === "home"){
+      drawGlass(cv, (t % 6000) / 6000, t);
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* ══════════════════════════════════════════════════════════
+   5. CONFETTIS
+   ══════════════════════════════════════════════════════════ */
+
+const confCv = document.getElementById("confetti");
+let confParts = [], confRaf = null;
+const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function confetti(n){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  confCv.width = innerWidth*dpr; confCv.height = innerHeight*dpr;
+  const ctx = confCv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cols = [readVar("--coral"), readVar("--teal"), readVar("--sand"), readVar("--grape")];
+  for (let i = 0; i < n; i++){
+    confParts.push({
+      x: Math.random()*innerWidth, y: -20 - Math.random()*innerHeight*0.4,
+      vx: (Math.random()-.5)*2.4, vy: 2 + Math.random()*3.4,
+      s: 5 + Math.random()*7, a: Math.random()*Math.PI, va: (Math.random()-.5)*0.24,
+      c: cols[i % cols.length], life: 1,
+    });
+  }
+  if (reduced){ confParts = []; return; }
+  if (!confRaf) confRaf = requestAnimationFrame(confStep);
+}
+function confStep(){
+  const ctx = confCv.getContext("2d");
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  confParts = confParts.filter(function(p){ return p.y < innerHeight + 40; });
+  confParts.forEach(function(p){
+    p.x += p.vx; p.y += p.vy; p.vy += 0.045; p.a += p.va;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a);
+    ctx.fillStyle = p.c; ctx.fillRect(-p.s/2, -p.s/3, p.s, p.s*0.66);
+    ctx.restore();
+  });
+  if (confParts.length) confRaf = requestAnimationFrame(confStep);
+  else { confRaf = null; ctx.clearRect(0, 0, innerWidth, innerHeight); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. ÉTAT DE PARTIE
+   ══════════════════════════════════════════════════════════ */
+
+const $ = function(id){ return document.getElementById(id); };
+const app = $("app");
+
+let G = null;   // partie en cours
+let locked = false;
+
+function show(name){
+  app.dataset.screen = name;
+  const list = document.querySelectorAll(".screen");
+  for (let i = 0; i < list.length; i++) list[i].classList.remove("on");
+  const el = $("s-" + name);
+  el.classList.add("on");
+  el.scrollTop = 0;
+}
+
+function shuffle(a){
+  const r = a.slice();
+  for (let i = r.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    const t = r[i]; r[i] = r[j]; r[j] = t;
+  }
+  return r;
+}
+
+function pool(){
+  let all = [];
+  cfg.themes.forEach(function(k){ if (THEMES[k]) all = all.concat(THEMES[k].list); });
+  cfg.custom.forEach(function(w){ all.push({ art:"✨", word:w, theme:"Vos cartes" }); });
+  return all;
+}
+
+function toast(msg){
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 2500);
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. RÉGLAGES — INTERFACE
+   ══════════════════════════════════════════════════════════ */
+
+function buildSeg(el, values, current, fmt, onPick){
+  el.innerHTML = "";
+  values.forEach(function(v){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = fmt(v);
+    b.setAttribute("aria-pressed", String(v === current));
+    b.addEventListener("click", function(){
+      onPick(v);
+      const kids = el.children;
+      for (let i = 0; i < kids.length; i++) kids[i].setAttribute("aria-pressed", String(kids[i] === b));
+      saveCfg();
+    });
+    el.appendChild(b);
+  });
+}
+
+function renderThemes(){
+  const box = $("themeChips");
+  box.innerHTML = "";
+  Object.keys(THEMES).forEach(function(k){
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip";
+    b.innerHTML = THEMES[k].icon + " " + THEMES[k].label + " <small>" + THEMES[k].list.length + "</small>";
+    b.setAttribute("aria-pressed", String(cfg.themes.indexOf(k) >= 0));
+    b.addEventListener("click", function(){
+      const i = cfg.themes.indexOf(k);
+      if (i >= 0) cfg.themes.splice(i, 1); else cfg.themes.push(k);
+      b.setAttribute("aria-pressed", String(cfg.themes.indexOf(k) >= 0));
+      saveCfg(); renderDeckInfo();
+    });
+    box.appendChild(b);
+  });
+  renderDeckInfo();
+}
+
+function renderDeckInfo(){
+  const n = pool().length;
+  const need = G && G.mode === "coop" ? cfg.coopCards : cfg.deckSize;
+  $("deckInfo").textContent = n + " cartes disponibles" + (n < need ? " — il en faut au moins " + need + "." : ".");
+  $("deckInfo").style.color = n < need ? "var(--coral)" : "";
+}
+
+function renderTagList(el, arr, onRemove){
+  el.innerHTML = "";
+  arr.forEach(function(v, i){
+    const li = document.createElement("li");
+    li.className = "tag";
+    li.appendChild(document.createTextNode(v));
+    const x = document.createElement("button");
+    x.type = "button"; x.textContent = "✕";
+    x.setAttribute("aria-label", "Retirer " + v);
+    x.addEventListener("click", function(){ onRemove(i); });
+    li.appendChild(x);
+    el.appendChild(li);
+  });
+}
+
+function renderCustom(){
+  renderTagList($("customList"), cfg.custom, function(i){
+    cfg.custom.splice(i, 1); saveCfg(); renderCustom(); renderDeckInfo();
+  });
+}
+function renderPlayers(){
+  renderTagList($("playerList"), cfg.players, function(i){
+    cfg.players.splice(i, 1); saveCfg(); renderPlayers();
+  });
+}
+
+function renderTeamNames(){
+  const box = $("teamNames");
+  box.innerHTML = "";
+  for (let i = 0; i < cfg.teamCount; i++){
+    if (!cfg.teamNames[i]) cfg.teamNames[i] = TEAM_NAMES[i];
+    const row = document.createElement("div");
+    row.className = "teamrow";
+    const dot = document.createElement("span");
+    dot.className = "dot"; dot.style.background = TEAM_COLORS[i];
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.value = cfg.teamNames[i]; inp.maxLength = 20;
+    inp.setAttribute("aria-label", "Nom de l'équipe " + (i+1));
+    (function(idx){
+      inp.addEventListener("input", function(){ cfg.teamNames[idx] = inp.value; saveCfg(); });
+    })(i);
+    row.appendChild(dot); row.appendChild(inp);
+    box.appendChild(row);
+  }
+}
+
+function openSetup(mode){
+  G = { mode: mode };
+  $("setupMode").textContent = mode === "coop" ? "Tous ensemble" : "En équipes";
+  $("panelCoop").style.display  = mode === "coop"  ? "" : "none";
+  $("panelTeams").style.display = mode === "teams" ? "" : "none";
+  $("rowPass").style.display    = mode === "teams" ? "" : "none";
+  $("rowChain").style.display   = mode === "teams" ? "" : "none";
+  $("playersHint").textContent = mode === "coop"
+    ? "Sert à annoncer qui mène, et à élire le meilleur mime à la fin."
+    : "Sert à élire le meilleur mime à la fin de la partie.";
+  $("setupErr").hidden = true;
+  renderDeckInfo();
+  show("setup");
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. DÉMARRAGE
+   ══════════════════════════════════════════════════════════ */
+
+function startGame(){
+  const p = pool();
+  const need = G.mode === "coop" ? cfg.coopCards : cfg.deckSize;
+  if (!cfg.themes.length && !cfg.custom.length){
+    return fail("Choisissez au moins un thème de cartes.");
+  }
+  if (p.length < need){
+    return fail("Il n'y a que " + p.length + " cartes. Ajoutez un thème, ou réduisez la taille du paquet.");
+  }
+  $("setupErr").hidden = true;
+
+  G.cards      = shuffle(p).slice(0, need);
+  G.manche     = 0;
+  G.manches    = MANCHES[G.mode];
+  G.foundAll   = [];
+  G.turnFound  = [];
+  G.leader     = 0;
+  G.sinceHand  = 0;
+
+  if (G.mode === "coop"){
+    G.total     = cfg.coopMinutes * 60;
+    G.remain    = G.total;
+    G.deck      = shuffle(G.cards);
+    G.doneCount = 0;
+  } else {
+    G.teams = [];
+    for (let i = 0; i < cfg.teamCount; i++){
+      G.teams.push({ name: cfg.teamNames[i] || TEAM_NAMES[i], color: TEAM_COLORS[i], scores: [0,0,0] });
+    }
+    G.turn  = 0;                       // index d'équipe
+    G.deck  = shuffle(G.cards);
+    G.total = cfg.turnSeconds;
+    G.remain = G.total;
+  }
+  audio();                             // débloque le son sur ce geste
+  intro();
+}
+function fail(msg){
+  $("setupErr").textContent = msg;
+  $("setupErr").hidden = false;
+  $("setupErr").scrollIntoView({ block:"center", behavior: reduced ? "auto" : "smooth" });
+}
+
+function intro(){
+  const m = G.manches[G.manche];
+  $("introBadge").textContent = "Manche " + (G.manche + 1) + " sur " + G.manches.length;
+  $("introIcon").textContent = m.icon;
+  $("introTitle").textContent = m.title;
+  $("introRule").innerHTML = m.rule;
+  if (G.mode === "coop"){
+    $("introWho").textContent = G.deck.length + " cartes à faire deviner — il reste " + fmtTime(G.remain) + " de sable.";
+    $("introGo").textContent = G.manche === 0 ? "Démarrer le sablier" : "On enchaîne !";
+  } else {
+    $("introWho").textContent = "Au tour de " + G.teams[G.turn].name + ".";
+    $("introGo").textContent = "Démarrer";
+  }
+  G.introShownFor = G.manche;
+  show("intro");
+}
+
+/* ══════════════════════════════════════════════════════════
+   9. LE TOUR DE JEU
+   ══════════════════════════════════════════════════════════ */
+
+let raf = null, lastTs = 0, lastWholeSec = -1;
+
+function beginTurn(){
+  G.turnFound = [];
+  if (G.mode === "teams") G.remain = G.total;
+  locked = false;
+  document.querySelectorAll(".card.ghost").forEach(function(g){ g.remove(); });
+  lastWholeSec = -1;
+  updateHud();
+  nextCard(null);
+  show("play");
+  lastTs = performance.now();
+  if (!raf) raf = requestAnimationFrame(loop);
+}
+
+function fmtTime(s){
+  s = Math.max(0, Math.ceil(s));
+  const m = Math.floor(s / 60);
+  return m + ":" + String(s % 60).padStart(2, "0");
+}
+
+function loop(ts){
+  raf = requestAnimationFrame(loop);
+  const dt = Math.min(0.25, (ts - lastTs) / 1000);
+  lastTs = ts;
+  if (app.dataset.screen !== "play") return;
+
+  G.remain -= dt;
+  const whole = Math.ceil(G.remain);
+  if (whole !== lastWholeSec){
+    lastWholeSec = whole;
+    $("clock").textContent = fmtTime(G.remain);
+    $("clock").classList.toggle("low", G.remain <= 10);
+    if (whole > 0 && whole <= 5) SFX.tick();
+  }
+  drawGlass($("glass"), 1 - G.remain / G.total, ts);
+
+  if (G.remain <= 0){
+    G.remain = 0;
+    SFX.end();
+    timeUp();
+  }
+}
+function stopLoop(){
+  if (raf){ cancelAnimationFrame(raf); raf = null; }
+}
+
+function updateHud(){
+  if (G.mode === "coop"){
+    $("hudRound").textContent = "Manche " + (G.manche+1) + " · " + G.manches[G.manche].title;
+    $("hudWho").textContent = cfg.players.length
+      ? "Meneur : " + cfg.players[G.leader % cfg.players.length]
+      : "Tous ensemble";
+    $("tally").textContent = G.doneCount + " / " + G.cards.length;
+    $("tallyLabel").textContent = "cartes";
+    $("btnHand").style.display = cfg.players.length > 1 ? "" : "none";
+    $("btnStop").style.display = "none";
+  } else {
+    $("hudRound").textContent = "Manche " + (G.manche+1) + " · " + G.manches[G.manche].title;
+    $("hudWho").textContent = G.teams[G.turn].name;
+    $("tally").textContent = G.turnFound.length;
+    $("tallyLabel").textContent = "ce tour";
+    $("btnHand").style.display = "none";
+    $("btnStop").style.display = "";
+  }
+  const canPass = cfg.passAlways || G.mode === "coop" || G.manche === 0;
+  $("btnSkip").disabled = !canPass || G.deck.length <= 1;
+  $("btnSkip").textContent = canPass ? "Passer" : "Passe interdite";
+  $("btnSound").textContent = cfg.sound ? "🔊" : "🔇";
+  $("btnSound").setAttribute("aria-label", cfg.sound ? "Couper le son" : "Activer le son");
+  $("clock").textContent = fmtTime(G.remain);
+}
+
+function nextCard(dir){
+  const card = $("card");
+  const stage = card.parentNode;
+  if (dir && !reduced){
+    const ghost = card.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.classList.add("ghost", dir === "right" ? "out-right" : "out-left");
+    stage.appendChild(ghost);
+    setTimeout(function(){ ghost.remove(); }, 320);
+  }
+  const c = G.deck[0];
+  if (!c) return;
+  $("cardArt").textContent = c.art;
+  $("cardWord").textContent = c.word;
+  $("cardTheme").textContent = c.theme;
+  if (!reduced){
+    card.classList.remove("in");
+    void card.offsetWidth;              // relance l'animation d'entrée
+    card.classList.add("in");
+  }
+}
+
+/* garde-fou minimal contre le double déclenchement tactile */
+function guard(){
+  if (locked) return false;
+  locked = true;
+  setTimeout(function(){ locked = false; }, 90);
+  return true;
+}
+
+function onFound(){
+  if (!G.deck.length || !guard()) return;
+  const c = G.deck.shift();
+  G.turnFound.push(c);
+  G.foundAll.push(c);
+  SFX.found();
+  if (G.mode === "coop"){
+    G.doneCount++;
+    G.sinceHand++;
+    if (cfg.players.length > 1 && G.sinceHand >= 5){
+      G.sinceHand = 0;
+      G.leader++;
+      toast("À toi, " + cfg.players[G.leader % cfg.players.length] + " !");
+    }
+  } else {
+    G.teams[G.turn].scores[G.manche]++;
+  }
+  updateHud();
+  if (!G.deck.length){ deckEmpty(); return; }
+  nextCard("right");
+}
+
+function onSkip(){
+  if (G.deck.length <= 1 || !guard()) return;
+  const canPass = cfg.passAlways || G.mode === "coop" || G.manche === 0;
+  if (!canPass) return;
+  const c = G.deck.shift();
+  G.deck.push(c);
+  SFX.skip();
+  nextCard("left");
+}
+
+/* le paquet est vide : fin de manche */
+function deckEmpty(){
+  const last = G.manche >= G.manches.length - 1;
+
+  if (G.mode === "coop"){
+    if (last){ stopLoop(); return endGame(true); }
+    stopLoop();
+    G.manche++;
+    G.deck = shuffle(G.cards);
+    G.doneCount = 0;
+    SFX.round();
+    intro();
+    return;
+  }
+
+  // équipes : règle officielle — on enchaîne avec le temps restant
+  if (last){ stopLoop(); return endGame(true); }
+  if (cfg.chain && G.remain > 3){
+    G.manche++;
+    G.deck = shuffle(G.cards);
+    SFX.round();
+    updateHud();
+    toast("Manche " + (G.manche+1) + " — " + G.manches[G.manche].title + " !");
+    nextCard("right");
+    return;
+  }
+  stopLoop();
+  G.manche++;
+  G.deck = shuffle(G.cards);
+  turnEnd("Manche terminée !", "Le paquet est vide.");
+}
+
+function timeUp(){
+  stopLoop();
+  if (G.mode === "coop") return endGame(false);
+  turnEnd("Temps écoulé !", G.turnFound.length
+    ? G.teams[G.turn].name + " marque " + G.turnFound.length + " point" + (G.turnFound.length > 1 ? "s" : "") + "."
+    : "Aucune carte cette fois. Ça arrive !");
+}
+
+function onStop(){
+  if (G.mode !== "teams") return;
+  stopLoop();
+  turnEnd("Tour arrêté", "Vous avez rendu la main.");
+}
+
+/* ══════════════════════════════════════════════════════════
+   10. FIN DE TOUR / FIN DE PARTIE
+   ══════════════════════════════════════════════════════════ */
+
+function turnEnd(title, line){
+  $("teEyebrow").textContent = line;
+  $("teTitle").textContent = title;
+
+  const recap = $("teRecap");
+  recap.innerHTML = "";
+  G.turnFound.forEach(function(c){
+    const li = document.createElement("li");
+    li.textContent = c.art + " " + c.word;
+    recap.appendChild(li);
+  });
+  if (!G.turnFound.length){
+    const li = document.createElement("li");
+    li.className = "miss"; li.textContent = "aucune carte";
+    recap.appendChild(li);
+  }
+
+  renderScoreTable($("teScore"));
+
+  G.turn = (G.turn + 1) % G.teams.length;
+  $("teNext").textContent = "Au tour de " + G.teams[G.turn].name;
+  show("turnend");
+}
+
+function renderScoreTable(table){
+  const nm = G.manches.length;
+  let head = "<thead><tr><th>Équipe</th>";
+  for (let i = 0; i < nm; i++) head += "<th>M" + (i+1) + "</th>";
+  head += "<th>Total</th></tr></thead>";
+
+  const totals = G.teams.map(function(t){
+    return t.scores.slice(0, nm).reduce(function(a,b){ return a+b; }, 0);
+  });
+  const best = Math.max.apply(null, totals);
+
+  let body = "<tbody>";
+  G.teams.forEach(function(t, i){
+    body += '<tr class="' + (totals[i] === best && best > 0 ? "win" : "") + '">';
+    body += '<td><span class="dot" style="background:' + t.color + '"></span>' + escapeHtml(t.name) + "</td>";
+    for (let m = 0; m < nm; m++) body += "<td>" + (m <= G.manche ? t.scores[m] : "·") + "</td>";
+    body += '<td class="tot">' + totals[i] + "</td></tr>";
+  });
+  body += "</tbody>";
+  table.innerHTML = head + body;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+function endGame(won){
+  stopLoop();
+  const icon = $("endIcon"), title = $("endTitle"), line = $("endLine");
+
+  if (G.mode === "coop"){
+    $("endScorePanel").style.display = "none";
+    if (won){
+      icon.textContent = "🏆";
+      title.textContent = "Gagné, tous ensemble !";
+      line.textContent = "Les " + G.cards.length + " cartes devinées deux fois, avec " +
+                         fmtTime(G.remain) + " de sable en réserve.";
+      SFX.win(); confetti(150);
+    } else {
+      icon.textContent = "⏳";
+      title.textContent = "Le sablier est vide";
+      const done = G.manche * G.cards.length + G.doneCount;
+      const goal = G.cards.length * G.manches.length;
+      line.textContent = done + " cartes sur " + goal + ". Il s'en est fallu de peu — on retente ?";
+      SFX.lose();
+    }
+  } else {
+    $("endScorePanel").style.display = "";
+    renderScoreTable($("endScore"));
+    const totals = G.teams.map(function(t){
+      return t.scores.reduce(function(a,b){ return a+b; }, 0);
+    });
+    const best = Math.max.apply(null, totals);
+    const winners = G.teams.filter(function(t, i){ return totals[i] === best; });
+    icon.textContent = winners.length > 1 ? "🤝" : "🏆";
+    title.textContent = winners.length > 1
+      ? "Égalité parfaite !"
+      : winners[0].name + " — victoire !";
+    line.textContent = winners.length > 1
+      ? winners.map(function(t){ return t.name; }).join(" et ") + " terminent à " + best + " points."
+      : best + " cartes devinées en trois manches.";
+    SFX.win(); confetti(160);
+  }
+
+  // récapitulatif des cartes (sans doublons)
+  const seen = {}, recap = $("endRecap");
+  recap.innerHTML = "";
+  G.foundAll.forEach(function(c){
+    if (seen[c.word]) return;
+    seen[c.word] = 1;
+    const li = document.createElement("li");
+    li.textContent = c.art + " " + c.word;
+    recap.appendChild(li);
+  });
+  if (!recap.children.length){
+    const li = document.createElement("li");
+    li.className = "miss"; li.textContent = "aucune carte devinée";
+    recap.appendChild(li);
+  }
+
+  buildMvp();
+  show("end");
+}
+
+function buildMvp(){
+  const names = cfg.players.length
+    ? cfg.players.slice()
+    : (G.mode === "teams" ? G.teams.map(function(t){ return t.name; }) : []);
+  const panel = $("mvpPanel"), list = $("mvpList"), res = $("mvpResult");
+  if (names.length < 2){ panel.style.display = "none"; return; }
+  panel.style.display = "";
+  res.hidden = true;
+  list.innerHTML = "";
+  names.forEach(function(n){
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = n;
+    b.addEventListener("click", function(){
+      const all = list.querySelectorAll(".chip");
+      for (let i = 0; i < all.length; i++) all[i].setAttribute("aria-pressed", String(all[i] === b));
+      res.textContent = "👑 " + n + " !";
+      res.hidden = false;
+      SFX.round(); confetti(60);
+    });
+    list.appendChild(b);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   11. BRANCHEMENTS
+   ══════════════════════════════════════════════════════════ */
+
+loadCfg();
+renderThemes();
+renderCustom();
+renderPlayers();
+renderTeamNames();
+$("optSound").checked = cfg.sound;
+$("optPass").checked  = cfg.passAlways;
+$("optChain").checked = cfg.chain;
+
+buildSeg($("segCoopTime"), [6, 8, 10, 12], cfg.coopMinutes,
+  function(v){ return v + " min"; },
+  function(v){ cfg.coopMinutes = v; });
+
+buildSeg($("segCoopCards"), [12, 20, 30], cfg.coopCards,
+  function(v){ return v + " cartes"; },
+  function(v){ cfg.coopCards = v; renderDeckInfo(); });
+
+buildSeg($("segTurn"), [30, 45, 60], cfg.turnSeconds,
+  function(v){ return v + " s"; },
+  function(v){ cfg.turnSeconds = v; });
+
+buildSeg($("segDeck"), [20, 30, 40], cfg.deckSize,
+  function(v){ return v + " cartes"; },
+  function(v){ cfg.deckSize = v; renderDeckInfo(); });
+
+buildSeg($("segTeamCount"), [2, 3, 4], cfg.teamCount,
+  function(v){ return v + " équipes"; },
+  function(v){ cfg.teamCount = v; renderTeamNames(); });
+
+document.querySelectorAll(".modecard").forEach(function(b){
+  b.addEventListener("click", function(){ openSetup(b.dataset.mode); });
+});
+
+$("toRules").addEventListener("click", function(){ show("rules"); });
+$("rulesBack").addEventListener("click", function(){ show("home"); });
+$("backHome").addEventListener("click", function(){ show("home"); });
+
+function addFrom(input, arr, render){
+  const v = input.value.trim();
+  if (!v) return;
+  if (arr.indexOf(v) < 0) arr.push(v);
+  input.value = "";
+  saveCfg(); render(); renderDeckInfo();
+  input.focus();
+}
+$("customAdd").addEventListener("click", function(){ addFrom($("customInput"), cfg.custom, renderCustom); });
+$("customInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addFrom($("customInput"), cfg.custom, renderCustom); }
+});
+$("playerAdd").addEventListener("click", function(){ addFrom($("playerInput"), cfg.players, renderPlayers); });
+$("playerInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addFrom($("playerInput"), cfg.players, renderPlayers); }
+});
+
+$("optSound").addEventListener("change", function(){ cfg.sound = this.checked; saveCfg(); });
+$("optPass").addEventListener("change",  function(){ cfg.passAlways = this.checked; saveCfg(); });
+$("optChain").addEventListener("change", function(){ cfg.chain = this.checked; saveCfg(); });
+
+$("startGame").addEventListener("click", startGame);
+$("introGo").addEventListener("click", beginTurn);
+
+$("btnFound").addEventListener("click", onFound);
+$("btnSkip").addEventListener("click", onSkip);
+$("btnStop").addEventListener("click", onStop);
+$("btnSound").addEventListener("click", function(){
+  cfg.sound = !cfg.sound; saveCfg(); updateHud();
+  if (cfg.sound) SFX.skip();
+});
+$("btnHand").addEventListener("click", function(){
+  if (!cfg.players.length) return;
+  G.leader++; G.sinceHand = 0;
+  updateHud();
+  toast("À toi, " + cfg.players[G.leader % cfg.players.length] + " !");
+});
+$("btnQuit").addEventListener("click", function(){
+  stopLoop();
+  show("home");
+});
+
+$("teNext").addEventListener("click", function(){
+  if (G.introShownFor !== G.manche) intro(); else beginTurn();
+});
+$("endAgain").addEventListener("click", function(){ confParts = []; startGame(); });
+$("endHome").addEventListener("click", function(){ confParts = []; show("home"); });
+
+/* barre d'espace = trouvé, pendant le jeu */
+document.addEventListener("keydown", function(e){
+  if (app.dataset.screen !== "play") return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space"){ e.preventDefault(); onFound(); }
+  else if (e.code === "ArrowLeft"){ e.preventDefault(); onSkip(); }
+});
+
+window.addEventListener("resize", function(){
+  if (app.dataset.screen === "play") drawGlass($("glass"), 1 - G.remain / G.total, performance.now());
+});
+
+})();
+</script>
