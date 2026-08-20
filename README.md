@@ -9,6 +9,12 @@ vous êtes dit, ce qu'il a appris de vous, et le lien qui s'est construit.
 Laissé seul, il s'ennuie, se fatigue, finit par s'endormir — et prend parfois
 la parole tout seul.
 
+## Aussi dans ce dépôt
+
+**[Chatons qui explosent](kittens/)** — un jeu de cartes multijoueur en ligne,
+sans serveur : une personne crée la partie, partage le code, et tout le monde
+joue depuis son téléphone. Voir [`kittens/README.md`](kittens/README.md).
+
 ## Démarrer
 
 **En ligne** — activer GitHub Pages sur ce dépôt (Settings → Pages → branche

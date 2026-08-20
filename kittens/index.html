@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Chatons qui explosent</title>
+<meta name="description" content="Le jeu de cartes où l'on pioche en priant pour ne pas tomber sur le chaton explosif. Une personne crée la partie, partage le code, tout le monde joue depuis son téléphone.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#120d20">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128169;</text></svg>">
+</head>
+<body>
+
+<!-- ————————————————————————————————————————— accueil -->
+<section id="accueil" class="ecran actif">
+  <div class="accueil-boite">
+    <div class="logo" id="logo"></div>
+    <h1>Chatons qui explosent</h1>
+    <p class="baseline">Piochez. Priez. Explosez.<br>Le dernier debout gagne.</p>
+
+    <label class="champ">
+      <span>Votre prénom</span>
+      <input id="pseudo" type="text" maxlength="14" autocomplete="nickname" placeholder="Alex" enterkeyhint="done">
+    </label>
+
+    <button id="btn-creer" class="bouton bouton--majeur">Créer une partie</button>
+
+    <div class="separateur"><span>ou rejoindre avec un code</span></div>
+
+    <form id="form-rejoindre" class="ligne-code">
+      <input id="code-saisi" type="text" inputmode="text" autocapitalize="characters" autocomplete="off"
+             spellcheck="false" maxlength="8" placeholder="ABCDE" aria-label="Code de la partie">
+      <button id="btn-rejoindre" class="bouton" type="submit">Rejoindre</button>
+    </form>
+
+    <p id="accueil-erreur" class="erreur" role="alert"></p>
+    <button id="btn-regles-accueil" class="lien-discret">Comment on joue ?</button>
+  </div>
+</section>
+
+<!-- ————————————————————————————————————————— salon -->
+<section id="salon" class="ecran">
+  <header class="barre">
+    <button id="btn-quitter-salon" class="icone" aria-label="Quitter">←</button>
+    <span class="barre-titre">Salon</span>
+    <button id="btn-regles-salon" class="icone" aria-label="Règles">?</button>
+  </header>
+
+  <div class="salon-corps">
+    <p class="salon-intro">Partagez ce code — ou le lien — avec vos joueurs.</p>
+    <div class="code-boite">
+      <div id="code-affiche" class="code">—————</div>
+      <button id="btn-copier" class="bouton bouton--fin">Copier le lien</button>
+    </div>
+
+    <div id="partage" class="partage"></div>
+
+    <h2 class="titre-section">Joueurs <span id="compteur-joueurs" class="compteur"></span></h2>
+    <ul id="liste-joueurs" class="liste-joueurs"></ul>
+
+    <p id="salon-note" class="note"></p>
+  </div>
+
+  <div class="salon-pied">
+    <button id="btn-demarrer" class="bouton bouton--majeur" hidden>Lancer la partie</button>
+  </div>
+
+  <div class="salon-chat">
+    <div id="chat-salon" class="chat-fil"></div>
+    <form id="form-chat-salon" class="chat-saisie">
+      <input type="text" maxlength="200" placeholder="Écrire au groupe…" aria-label="Message">
+      <button class="icone" type="submit" aria-label="Envoyer">➤</button>
+    </form>
+  </div>
+</section>
+
+<!-- ————————————————————————————————————————— table -->
+<section id="table" class="ecran">
+  <header class="barre barre--table">
+    <span id="table-code" class="etiquette"></span>
+    <span id="table-etat" class="barre-titre"></span>
+    <button id="btn-son" class="icone" aria-label="Sons">♪</button>
+    <button id="btn-chat" class="icone" aria-label="Discussion">💬<i id="pastille-chat" class="pastille" hidden></i></button>
+    <button id="btn-regles-table" class="icone" aria-label="Règles">?</button>
+  </header>
+
+  <div id="adversaires" class="adversaires"></div>
+
+  <div class="tapis">
+    <div class="tapis-piles">
+      <button id="pioche" class="pile pile--pioche" aria-label="Piocher">
+        <span id="pioche-compte" class="pile-compte"></span>
+      </button>
+      <div id="defausse" class="pile pile--defausse"></div>
+    </div>
+    <div id="annonce" class="annonce"></div>
+    <div id="journal" class="journal" aria-live="polite"></div>
+  </div>
+
+  <div id="main-cartes" class="main"></div>
+  <div id="actions" class="actions-barre"></div>
+</section>
+
+<!-- ————————————————————————————————————————— superpositions -->
+<div id="voile" class="voile" hidden>
+  <div id="modale" class="modale" role="dialog" aria-modal="true"></div>
+</div>
+
+<aside id="panneau-chat" class="panneau" hidden>
+  <header class="barre">
+    <span class="barre-titre">Discussion</span>
+    <button id="btn-fermer-chat" class="icone" aria-label="Fermer">✕</button>
+  </header>
+  <div id="chat-table" class="chat-fil"></div>
+  <form id="form-chat-table" class="chat-saisie">
+    <input type="text" maxlength="200" placeholder="Écrire…" aria-label="Message">
+    <button class="icone" type="submit" aria-label="Envoyer">➤</button>
+  </form>
+</aside>
+
+<aside id="panneau-regles" class="panneau" hidden>
+  <header class="barre">
+    <span class="barre-titre">Les règles</span>
+    <button id="btn-fermer-regles" class="icone" aria-label="Fermer">✕</button>
+  </header>
+  <div class="regles"></div>
+</aside>
+
+<div id="bandeau" class="bandeau" role="status"></div>
+
+<script src="vendor/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
