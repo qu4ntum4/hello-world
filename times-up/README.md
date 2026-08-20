@@ -23,15 +23,24 @@ débloque partout pour les plus jeunes.
 
 ## Contenu
 
-200 cartes en cinq thèmes — animaux, objets, métiers & personnages, actions &
-nature, trucs rigolos — chacune avec son illustration. On peut ajouter ses
-propres cartes ; elles se mélangent aux autres et sont conservées d'une partie
-à l'autre.
+450 cartes illustrées, **un seul mot par carte**, réparties en cinq thèmes —
+animaux, objets, métiers & personnages, actions & nature, rigolos — et en trois
+niveaux de 30 cartes par thème :
+
+| Niveau | Pour qui | Exemples |
+| --- | --- | --- |
+| **Facile** | dès 6 ans | Chat · Balai · Pompier · Courir · Glace |
+| **Moyen** | 8 à 10 ans | Hérisson · Boussole · Détective · Siffler · Piñata |
+| **Costaud** | les grands | Caméléon · Boulier · Paléontologue · Geyser · Quiproquo |
+
+« Mélangé » pioche dans les trois, pour une table d'âges très différents. On
+peut ajouter ses propres cartes ; elles se mélangent au paquet quel que soit le
+niveau et sont conservées d'une partie à l'autre.
 
 ## Réglages
 
-Durée du tour (30/45/60 s) ou du sablier coopératif (6 à 12 min), taille du
-paquet, nombre d'équipes et leurs noms, prénoms des joueurs, sons et vibrations.
+Niveau de difficulté, thèmes, durée du tour (30/45/60 s) ou du sablier
+coopératif (6 à 12 min), taille du paquet, nombre d'équipes et leurs noms, prénoms des joueurs, sons et vibrations.
 Tout est mémorisé dans le `localStorage`.
 
 ## Implémentation

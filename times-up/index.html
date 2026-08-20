@@ -214,6 +214,26 @@ p{ margin:0; }
 .chip[aria-pressed="true"]{ background:var(--grape); color:#fff; border-color:var(--ink); }
 .chip small{ font-family:var(--mono); font-size:.72em; opacity:.75; margin-left:6px; }
 
+.optlist{ display:flex; flex-direction:column; gap:8px; }
+.optrow{
+  display:flex; gap:12px; align-items:center; text-align:left; width:100%;
+  padding:11px 14px; cursor:pointer;
+  background:var(--paper-2); border:2px solid transparent; border-radius:16px;
+  font-family:var(--body); color:var(--ink);
+  transition:border-color .12s ease, background .12s ease;
+}
+.optrow:hover{ border-color:var(--line); }
+.optrow:focus-visible{ outline:3px solid var(--grape); outline-offset:2px; }
+.optrow[aria-pressed="true"]{ background:var(--surface); border-color:var(--grape); }
+.optrow .pic{
+  font-size:1.45rem; line-height:1; flex:none;
+  width:42px; height:42px; display:grid; place-items:center;
+  background:var(--surface); border:2px solid var(--line); border-radius:12px;
+}
+.optrow[aria-pressed="true"] .pic{ background:var(--paper-2); border-color:var(--grape); }
+.optrow b{ font-family:var(--display); font-size:1.12rem; display:block; line-height:1.2; }
+.optrow .txt span{ color:var(--ink-2); font-size:.85rem; }
+
 .seg{ display:flex; gap:6px; background:var(--paper-2); padding:5px; border-radius:14px; }
 .seg button{
   flex:1; font-family:var(--mono); font-size:.9rem; font-weight:500;
@@ -440,6 +460,11 @@ ul{ margin:0; padding:0; }
     </div>
 
     <div class="panel">
+      <h3>Niveau de difficulté</h3>
+      <div class="optlist" id="levelList"></div>
+    </div>
+
+    <div class="panel">
       <h3>Thèmes des cartes</h3>
       <div class="chips" id="themeChips"></div>
       <p class="hint" id="deckInfo"></p>
@@ -447,9 +472,9 @@ ul{ margin:0; padding:0; }
 
     <div class="panel">
       <h3>Vos propres cartes</h3>
-      <p class="hint">Les prénoms de la famille, le chien, le prof de sport… Elles se mélangent aux autres.</p>
+      <p class="hint">Un mot chacune, comme les autres : le prénom du chien, le doudou, la maîtresse. Elles se mélangent au paquet quel que soit le niveau.</p>
       <div class="field">
-        <input type="text" id="customInput" placeholder="Ex : le chat de mamie" maxlength="40" autocomplete="off">
+        <input type="text" id="customInput" placeholder="Ex : Doudou" maxlength="24" autocomplete="off">
         <button class="btn" id="customAdd" style="padding:11px 18px;font-size:1rem">Ajouter</button>
       </div>
       <ul class="taglist" id="customList"></ul>
@@ -619,6 +644,11 @@ ul{ margin:0; padding:0; }
     </div>
 
     <div class="panel">
+      <h3>Trois niveaux</h3>
+      <p>Chaque carte porte <strong>un seul mot</strong>. Trois paquets, à choisir avant de commencer : <strong>Facile</strong> pour les mots du quotidien, <strong>Moyen</strong> vers 8 à 10 ans, <strong>Costaud</strong> pour les mots rares. Si les âges sont très différents autour de la table, « Mélangé » pioche dans les trois.</p>
+    </div>
+
+    <div class="panel">
       <h3>Passer une carte</h3>
       <p>Officiellement, on ne peut jeter une carte qu'à la manche 1 — elle retourne alors au fond du paquet. Aux manches suivantes, il faut aller au bout. Une option des réglages permet d'autoriser la passe partout, pour les plus jeunes.</p>
     </div>
@@ -635,61 +665,108 @@ ul{ margin:0; padding:0; }
    1. LES CARTES
    ══════════════════════════════════════════════════════════ */
 
+const LEVELS = [
+  { id:1, icon:"🐣", name:"Facile",  hint:"Mots très courants, faciles à mimer — dès 6 ans." },
+  { id:2, icon:"🦊", name:"Moyen",   hint:"Le bon niveau vers 8 à 10 ans." },
+  { id:3, icon:"🦅", name:"Costaud", hint:"Mots rares et corsés, pour les grands." },
+  { id:0, icon:"🎲", name:"Mélangé", hint:"Un peu des trois niveaux dans le même paquet." },
+];
+
+/* Une carte = un seul mot. Les traits d'union comptent pour un mot. */
 const THEMES = {
-  animaux: { label:"Animaux", icon:"🦎", cards:
-    "🦎 Caméléon;🐙 Pieuvre;🦔 Hérisson;🦥 Paresseux;🦇 Chauve-souris;🦭 Phoque;🦘 Kangourou;"+
-    "🦩 Flamant rose;🪲 Scarabée;🪼 Méduse;🦦 Loutre;🐼 Panda géant;🦙 Alpaga;🦜 Perroquet;"+
-    "🐊 Crocodile;🐌 Escargot;🦉 Hibou;🦈 Requin;🦒 Girafe;🐞 Coccinelle;🐫 Chameau;"+
-    "🦝 Raton laveur;🦨 Mouffette;🦞 Homard;🐝 Abeille;🪱 Ver de terre;🐆 Guépard;🐬 Dauphin;"+
-    "🐢 Tortue;🦂 Scorpion;🐺 Loup;🦡 Blaireau;🐗 Sanglier;🦆 Canard;🐴 Cheval de course;"+
-    "🦋 Papillon;🕷️ Araignée;🦏 Rhinocéros;🐧 Manchot;🦚 Paon" },
+  animaux: { label:"Animaux", icon:"🦊", sets:{
+    1:"🐱 Chat;🐶 Chien;🐴 Cheval;🐮 Vache;🐷 Cochon;🐔 Poule;🐰 Lapin;🐭 Souris;🐟 Poisson;"+
+      "🐦 Oiseau;🦆 Canard;🐝 Abeille;🦋 Papillon;🐜 Fourmi;🐍 Serpent;🐸 Grenouille;🦁 Lion;"+
+      "🐯 Tigre;🐘 Éléphant;🦒 Girafe;🐒 Singe;🐻 Ours;🐺 Loup;🦈 Requin;🐬 Dauphin;🐢 Tortue;"+
+      "🐌 Escargot;🕷️ Araignée;🐑 Mouton;🐐 Chèvre",
+    2:"🦔 Hérisson;🦇 Chauve-souris;🦉 Hibou;🦅 Aigle;🐧 Manchot;🦭 Phoque;🐊 Crocodile;"+
+      "🦘 Kangourou;🐪 Chameau;🦓 Zèbre;🦏 Rhinocéros;🦛 Hippopotame;🐆 Guépard;🦊 Renard;"+
+      "🦌 Cerf;🐗 Sanglier;🐿️ Écureuil;🦎 Lézard;🐙 Pieuvre;🦀 Crabe;🦐 Crevette;🐳 Baleine;"+
+      "🦜 Perroquet;🦚 Paon;🐓 Coq;🦃 Dinde;🪰 Mouche;🦗 Sauterelle;🐄 Taureau;🕊️ Colombe",
+    3:"🦎 Caméléon;🦥 Paresseux;🦡 Blaireau;🦫 Castor;🦦 Loutre;🦨 Mouffette;🦙 Alpaga;🪼 Méduse;"+
+      "🦞 Homard;🪲 Scarabée;🐞 Coccinelle;🦂 Scorpion;🪱 Lombric;🦤 Dodo;🦩 Flamant;🐫 Dromadaire;"+
+      "🦔 Porc-épic;🐋 Cachalot;🪳 Cafard;🦟 Moustique;🐛 Chenille;🦢 Cygne;🦧 Orang-outan;"+
+      "🦣 Mammouth;🦕 Diplodocus;🦭 Morse;🦑 Calmar;🐊 Alligator;🦬 Bison;🐃 Buffle",
+  }},
 
-  objets: { label:"Objets", icon:"🧹", cards:
-    "🧹 Balai;☂️ Parapluie;⏰ Réveil;🪥 Brosse à dents;🔦 Lampe de poche;🪜 Échelle;🧯 Extincteur;"+
-    "🪠 Ventouse;🧺 Panier à linge;🛋️ Canapé;🚿 Douche;🧊 Glaçon;🍳 Poêle à frire;🫖 Bouilloire;"+
-    "🔑 Trousseau de clés;🧲 Aimant;🪞 Miroir;🧸 Vieille peluche;🎈 Ballon de baudruche;🪁 Cerf-volant;"+
-    "🛒 Caddie;🩹 Pansement;🧻 Papier toilette;📎 Trombone;✂️ Ciseaux;🖍️ Feutre qui ne marche plus;"+
-    "🕰️ Horloge à coucou;🚪 Porte qui grince;🛏️ Lit superposé;🧦 Chaussette trouée;👟 Basket qui pue;"+
-    "🧳 Valise à roulettes;🔌 Prise électrique;🪑 Chaise pliante;🥁 Batterie;🎷 Saxophone;"+
-    "🔭 Télescope;🧭 Boussole;🪣 Seau percé;🎿 Paire de skis" },
+  objets: { label:"Objets", icon:"🪑", sets:{
+    1:"🪑 Chaise;🛏️ Lit;🚪 Porte;🪟 Fenêtre;🔑 Clé;📚 Livre;✏️ Crayon;✂️ Ciseaux;🧹 Balai;"+
+      "☂️ Parapluie;⏰ Réveil;🪥 Brosse;🥄 Cuillère;🍴 Fourchette;🍽️ Assiette;🥛 Verre;"+
+      "🧦 Chaussette;👟 Chaussure;🧢 Casquette;🎒 Cartable;🚲 Vélo;🚗 Voiture;📱 Téléphone;"+
+      "📺 Télé;🛁 Baignoire;🧼 Savon;🎈 Ballon;🧸 Peluche;🪆 Poupée;🕯️ Bougie",
+    2:"🪜 Échelle;🔦 Lampe;🧲 Aimant;🪞 Miroir;🧯 Extincteur;🧺 Panier;🛒 Caddie;🩹 Pansement;"+
+      "📎 Trombone;🖍️ Feutre;🕰️ Horloge;🧳 Valise;🔌 Prise;🥁 Tambour;🎷 Saxophone;🔭 Télescope;"+
+      "🧭 Boussole;🪣 Seau;🎿 Ski;🪁 Cerf-volant;🛋️ Canapé;🚿 Douche;🍳 Poêle;🫖 Bouilloire;"+
+      "🧊 Glaçon;🪛 Tournevis;🔨 Marteau;🪚 Scie;🧵 Fil;🪡 Aiguille",
+    3:"🪠 Ventouse;⚗️ Éprouvette;🔬 Microscope;🪝 Hameçon;🎺 Trompette;🪗 Accordéon;🪕 Banjo;"+
+      "🎻 Violon;⚓ Ancre;🪃 Boomerang;🗜️ Étau;🪤 Piège;🚡 Téléphérique;🛷 Luge;🪘 Djembé;"+
+      "🪈 Flûte;📽️ Projecteur;🕹️ Manette;⌨️ Clavier;🖨️ Imprimante;🧮 Boulier;⚖️ Balance;"+
+      "🔩 Écrou;🪑 Tabouret;🚁 Hélicoptère;🎠 Manège;⛲ Fontaine;🗿 Statue;🏺 Amphore;🪟 Persienne",
+  }},
 
-  metiers: { label:"Métiers & personnages", icon:"🥷", cards:
-    "🚒 Pompier;🩺 Vétérinaire;🏺 Archéologue;🧑‍🚀 Astronaute;🔧 Plombier;🥖 Boulanger;🛡️ Chevalier;"+
-    "🏴‍☠️ Pirate;🎩 Magicien;🦷 Dentiste;🌱 Jardinier;🧙 Sorcière;📮 Facteur;🎬 Cascadeur;"+
-    "🐝 Apiculteur;🧛 Vampire;🎼 Chef d'orchestre;📹 Youtubeur;🕵️ Détective;🧟 Zombie;🤖 Robot;"+
-    "👽 Extraterrestre;👑 Roi;🎪 Funambule;🤡 Clown;🥷 Ninja;⚔️ Samouraï;🪓 Viking;🤠 Cow-boy;"+
-    "🦸 Super-héros;🧮 Prof de maths;💇 Coiffeur;🎣 Pêcheur;🎭 Comédien;🚕 Chauffeur de taxi;"+
-    "🧑‍🍳 Grand chef;🏋️ Haltérophile;🧜 Sirène;🚁 Pilote d'hélicoptère;💃 Danseuse de flamenco" },
+  metiers: { label:"Métiers & personnages", icon:"🥷", sets:{
+    1:"🚒 Pompier;👮 Policier;🩺 Docteur;👨‍🏫 Maître;👩‍🍳 Cuisinier;🥖 Boulanger;🧑‍🌾 Fermier;"+
+      "📮 Facteur;💇 Coiffeur;🚕 Chauffeur;🎨 Peintre;🎤 Chanteur;⚽ Footballeur;💃 Danseur;"+
+      "🤡 Clown;🧙 Sorcière;🏴‍☠️ Pirate;👑 Roi;👸 Princesse;🧚 Fée;🤖 Robot;👽 Extraterrestre;"+
+      "🦸 Super-héros;🧑‍🚀 Astronaute;🧜 Sirène;🎩 Magicien;🦷 Dentiste;🐉 Dragon;🎣 Pêcheur;🌱 Jardinier",
+    2:"🩺 Vétérinaire;🔧 Plombier;🧑‍🔬 Scientifique;🕵️ Détective;📹 Youtubeur;🎼 Musicien;"+
+      "🛡️ Chevalier;⚔️ Samouraï;🥷 Ninja;🪓 Viking;🤠 Cow-boy;🧛 Vampire;🧟 Zombie;🧑‍🎨 Sculpteur;"+
+      "🏋️ Champion;🎪 Acrobate;✈️ Pilote;👷 Maçon;🧑‍⚖️ Juge;📰 Journaliste;🚌 Conducteur;"+
+      "🧑‍🚒 Secouriste;🏊 Nageur;🎿 Skieur;🧗 Grimpeur;🐝 Apiculteur;🍕 Pizzaiolo;🧑‍🏭 Ouvrier;"+
+      "🛎️ Serveur;🩰 Ballerine",
+    3:"🏺 Archéologue;🔭 Astronome;🎬 Cascadeur;🎪 Funambule;⛏️ Mineur;🧑‍🔧 Mécanicien;🖋️ Écrivain;"+
+      "🎭 Comédien;🧑‍🎤 Rockeur;🛶 Explorateur;🦴 Paléontologue;🧪 Chimiste;🌋 Volcanologue;"+
+      "✂️ Tailleur;🧵 Couturier;🥁 Batteur;🎯 Archer;🏇 Jockey;⚱️ Momie;🧞 Génie;🧌 Troll;🧝 Elfe;"+
+      "🦹 Bandit;🤴 Prince;🪄 Illusionniste;🚂 Cheminot;🐺 Loup-garou;🧜 Triton;🪖 Sentinelle;"+
+      "🧑‍✈️ Navigateur",
+  }},
 
-  nature: { label:"Actions & nature", icon:"🌪️", cards:
-    "🤧 Éternuer;🥱 Bâiller;🚴 Faire du vélo;🤿 Plonger;😴 Ronfler;🧗 Escalader;🤫 Chuchoter;"+
-    "🌈 Arc-en-ciel;🌪️ Tornade;🌋 Volcan;🏔️ Avalanche;💦 Cascade;🌒 Éclipse;🌊 Grosse vague;"+
-    "🫨 Tremblement de terre;🌫️ Brouillard;🥵 Canicule;⛈️ Orage;🔥 Feu de camp;🏊 Nager;🤹 Jongler;"+
-    "😗 Siffler;⛸️ Patiner;🌳 Grimper à un arbre;🏖️ Château de sable;😮‍💨 Avoir le hoquet;"+
-    "🌧️ Courir sous la pluie;🌱 Planter une graine;🏜️ Désert;🧊 Banquise;🌠 Étoile filante;"+
-    "♨️ Geyser;🍂 Automne;❄️ Tempête de neige;🐛 Chenille qui devient papillon;🌵 Cactus;"+
-    "🍄 Champignon;⚡ Éclair;🌙 Nuit noire;🪂 Sauter en parachute" },
+  nature: { label:"Actions & nature", icon:"🌪️", sets:{
+    1:"🏃 Courir;🤸 Sauter;😴 Dormir;🍽️ Manger;🥤 Boire;😂 Rire;😢 Pleurer;🏊 Nager;💃 Danser;"+
+      "🎤 Chanter;📖 Lire;✍️ Écrire;🎨 Dessiner;🧼 Laver;🧹 Balayer;🤧 Éternuer;🥱 Bâiller;"+
+      "🤫 Chuchoter;👋 Saluer;🧗 Grimper;☀️ Soleil;🌧️ Pluie;❄️ Neige;🌈 Arc-en-ciel;⛈️ Orage;"+
+      "🌳 Arbre;🌸 Fleur;🌊 Vague;🔥 Feu;🌙 Lune",
+    2:"😗 Siffler;⛸️ Patiner;🤹 Jongler;🤿 Plonger;😪 Ronfler;🚴 Pédaler;🪂 Atterrir;🧊 Glisser;"+
+      "🫧 Souffler;🤭 Chatouiller;🎣 Pêcher;🌱 Planter;🔨 Bricoler;🧗 Escalader;🌋 Volcan;"+
+      "🌪️ Tornade;💦 Cascade;🏔️ Montagne;🏜️ Désert;🌫️ Brouillard;🍂 Automne;⚡ Éclair;🌵 Cactus;"+
+      "🍄 Champignon;🌾 Prairie;🪨 Rocher;🏝️ Île;🕳️ Grotte;🐚 Coquillage;🌻 Tournesol",
+    3:"🌒 Éclipse;♨️ Geyser;🏔️ Avalanche;🫨 Séisme;🌊 Marée;🧊 Banquise;🌠 Comète;🪐 Galaxie;"+
+      "🌡️ Canicule;🌀 Ouragan;🏞️ Canyon;🌲 Sapin;🍁 Érable;🌴 Palmier;🌿 Mousse;🪷 Nénuphar;"+
+      "🕸️ Toile;🪺 Nid;🦴 Fossile;⛰️ Falaise;🏖️ Dune;💧 Rosée;❄️ Givre;🪞 Mirage;🌋 Lave;"+
+      "🥶 Grelotter;😤 Bouder;👏 Applaudir;🐎 Galoper;🦘 Bondir",
+  }},
 
-  fun: { label:"Trucs rigolos", icon:"🦄", cards:
-    "🦄 Licorne qui éternue;🕺 Robot qui danse;🧟 Zombie affamé;🍍 Pizza à l'ananas;"+
-    "📶 Wifi qui coupe;⏰ Réveil un lundi matin;💃 Danser la macarena;🎤 Karaoké faux;"+
-    "💧 Bataille d'eau;🧪 Slime qui déborde;🛹 Mamie en skateboard;🐔 Poulet qui traverse la route;"+
-    "🦧 Cri de Tarzan;🥷 Ninja en pyjama;🤳 Selfie raté;🧱 Marcher sur un Lego;🍋 Croquer un citron;"+
-    "🐱 Chat qui tombe dans la baignoire;🎂 Souffler 100 bougies;🍦 Glace qui tombe par terre;"+
-    "🦖 Dinosaure qui fait du yoga;🚀 Fusée qui décolle;🎢 Grand huit;🐍 Serpent qui a le hoquet;"+
-    "🧀 Souris voleuse de fromage;👻 Fantôme timide;🐧 Manchot qui glisse;🤖 Bug informatique;"+
-    "🍝 Spaghetti dans la barbe;🐘 Éléphant sur un trampoline;🧦 Chaussette perdue dans le sèche-linge;"+
-    "🚗 Embouteillage;🐟 Poisson d'avril;🎁 Cadeau décevant;🤒 Faire semblant d'être malade;"+
-    "🦆 Canard en colère;🎻 Violon qui grince;🍔 Burger trop gros pour la bouche;"+
-    "🦩 Flamant rose qui fait du yoga;🐒 Singe qui pique les lunettes" },
+  rigolos: { label:"Rigolos", icon:"🤪", sets:{
+    1:"😂 Chatouilles;🤪 Grimace;💤 Ronflement;🦄 Licorne;👻 Fantôme;🍦 Glace;🍕 Pizza;🍟 Frites;"+
+      "🎂 Gâteau;🍭 Sucette;🍿 Popcorn;🎉 Fête;🎁 Cadeau;🛝 Toboggan;🪀 Yoyo;🎪 Cirque;"+
+      "🤸 Galipette;🫧 Bulles;🌙 Pyjama;🧸 Doudou;😘 Bisou;🤗 Câlin;🟤 Boue;💦 Flaque;🧪 Slime;"+
+      "🎊 Confettis;🍬 Bonbon;🍬 Chewing-gum;🥸 Moustache;🎺 Klaxon",
+    2:"🤹 Pitrerie;😜 Bêtise;🎭 Farce;😹 Blague;😮‍💨 Hoquet;👱 Perruque;🥳 Déguisement;🎤 Karaoké;"+
+      "🤳 Selfie;😀 Emoji;🤾 Trampoline;🪅 Piñata;📜 Grimoire;⚗️ Potion;✨ Sortilège;💰 Trésor;"+
+      "👹 Monstre;💀 Squelette;🎃 Citrouille;🍲 Chaudron;😾 Chamaillerie;🖍️ Gribouillage;"+
+      "🌀 Pirouette;🤸 Cabriole;😆 Ricanement;🥱 Bâillement;💦 Éclaboussure;🍼 Rototo;👶 Bavoir;🍼 Tétine",
+    3:"🤡 Facétie;😈 Espièglerie;🤪 Loufoque;🗯️ Charabia;📢 Cacophonie;🌪️ Pagaille;🎪 Tohu-bohu;"+
+      "〰️ Zigzag;🎭 Guignol;🪆 Marionnette;🗣️ Ventriloque;🤸 Acrobatie;🎺 Fanfare;🎊 Carnaval;"+
+      "🎭 Mascarade;🎡 Kermesse;🙈 Gaffe;🤦 Maladresse;🔀 Quiproquo;📰 Canular;👃 Pied-de-nez;"+
+      "😉 Clin-d'œil;🤭 Pouffer;😂 Glousser;😏 Ricaner;🥁 Chahuter;🦌 Gambader;🐇 Sautiller;"+
+      "🐁 Trottiner;🎈 Baliverne",
+  }},
 };
 
 for (const key in THEMES){
-  THEMES[key].list = THEMES[key].cards.split(";").map(function(s){
-    const t = s.trim();
-    const sp = t.indexOf(" ");
-    return { art: t.slice(0, sp), word: t.slice(sp + 1), theme: THEMES[key].label };
+  const t = THEMES[key];
+  t.list = {};
+  [1,2,3].forEach(function(lv){
+    t.list[lv] = t.sets[lv].split(";").map(function(s){
+      const x = s.trim();
+      const sp = x.indexOf(" ");
+      return { art:x.slice(0, sp), word:x.slice(sp + 1), theme:t.label, level:lv };
+    });
   });
+  t.count = function(lv){
+    return lv ? this.list[lv].length
+              : this.list[1].length + this.list[2].length + this.list[3].length;
+  };
 }
 
 const MANCHES = {
@@ -717,7 +794,8 @@ const TEAM_NAMES  = ["Les Tigres", "Les Fusées", "Les Cactus", "Les Pingouins"]
    ══════════════════════════════════════════════════════════ */
 
 const DEFAULTS = {
-  themes: ["animaux", "objets", "metiers", "nature", "fun"],
+  level: 2,
+  themes: ["animaux", "objets", "metiers", "nature", "rigolos"],
   custom: [],
   players: [],
   teamNames: TEAM_NAMES.slice(0, 2),
@@ -738,7 +816,10 @@ function loadCfg(){
     const raw = localStorage.getItem("chrono-mimes");
     if (raw) cfg = Object.assign({}, DEFAULTS, JSON.parse(raw));
   }catch(e){ /* stockage indisponible : on garde les valeurs par défaut */ }
-  if (!Array.isArray(cfg.themes) || !cfg.themes.length) cfg.themes = DEFAULTS.themes.slice();
+  if (!Array.isArray(cfg.themes)) cfg.themes = [];
+  cfg.themes = cfg.themes.filter(function(k){ return !!THEMES[k]; });
+  if (!cfg.themes.length) cfg.themes = DEFAULTS.themes.slice();
+  if ([0,1,2,3].indexOf(cfg.level) < 0) cfg.level = DEFAULTS.level;
 }
 function saveCfg(){
   try{ localStorage.setItem("chrono-mimes", JSON.stringify(cfg)); }catch(e){}
@@ -980,6 +1061,7 @@ let G = null;   // partie en cours
 let locked = false;
 
 function show(name){
+  document.querySelectorAll(".toast").forEach(function(t){ t.remove(); });
   app.dataset.screen = name;
   const list = document.querySelectorAll(".screen");
   for (let i = 0; i < list.length; i++) list[i].classList.remove("on");
@@ -999,8 +1081,12 @@ function shuffle(a){
 
 function pool(){
   let all = [];
-  cfg.themes.forEach(function(k){ if (THEMES[k]) all = all.concat(THEMES[k].list); });
-  cfg.custom.forEach(function(w){ all.push({ art:"✨", word:w, theme:"Vos cartes" }); });
+  const lvls = cfg.level ? [cfg.level] : [1, 2, 3];
+  cfg.themes.forEach(function(k){
+    if (!THEMES[k]) return;
+    lvls.forEach(function(l){ all = all.concat(THEMES[k].list[l]); });
+  });
+  cfg.custom.forEach(function(w){ all.push({ art:"✨", word:w, theme:"Vos cartes", level:0 }); });
   return all;
 }
 
@@ -1032,13 +1118,32 @@ function buildSeg(el, values, current, fmt, onPick){
   });
 }
 
+function renderLevels(){
+  const box = $("levelList");
+  box.innerHTML = "";
+  LEVELS.forEach(function(L){
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "optrow";
+    b.setAttribute("aria-pressed", String(cfg.level === L.id));
+    b.innerHTML = '<span class="pic" aria-hidden="true">' + L.icon + '</span>' +
+                  '<span class="txt"><b>' + L.name + '</b><span>' + L.hint + '</span></span>';
+    b.addEventListener("click", function(){
+      cfg.level = L.id;
+      const kids = box.children;
+      for (let i = 0; i < kids.length; i++) kids[i].setAttribute("aria-pressed", String(kids[i] === b));
+      saveCfg(); renderThemes();
+    });
+    box.appendChild(b);
+  });
+}
+
 function renderThemes(){
   const box = $("themeChips");
   box.innerHTML = "";
   Object.keys(THEMES).forEach(function(k){
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip";
-    b.innerHTML = THEMES[k].icon + " " + THEMES[k].label + " <small>" + THEMES[k].list.length + "</small>";
+    b.innerHTML = THEMES[k].icon + " " + THEMES[k].label + " <small>" + THEMES[k].count(cfg.level) + "</small>";
     b.setAttribute("aria-pressed", String(cfg.themes.indexOf(k) >= 0));
     b.addEventListener("click", function(){
       const i = cfg.themes.indexOf(k);
@@ -1510,6 +1615,7 @@ function buildMvp(){
    ══════════════════════════════════════════════════════════ */
 
 loadCfg();
+renderLevels();
 renderThemes();
 renderCustom();
 renderPlayers();
