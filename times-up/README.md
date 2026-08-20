@@ -37,6 +37,20 @@ niveaux de 30 cartes par thème :
 peut ajouter ses propres cartes ; elles se mélangent au paquet quel que soit le
 niveau et sont conservées d'une partie à l'autre.
 
+## Reprise de partie
+
+L'état complet est écrit dans le `localStorage` à chaque carte jouée, toutes les
+deux secondes pendant un tour, et dès que l'onglet passe en arrière-plan. Fermer
+la page, verrouiller le téléphone ou toucher la croix ne perd rien : l'accueil
+propose de reprendre le même orateur, la même carte et **le temps qui restait
+exactement** — ce qui compte surtout en coopératif, où le sablier vaut pour
+toute la partie. La sauvegarde est effacée à la fin de la partie, si on choisit
+d'abandonner, ou au bout de 24 heures.
+
+Les paquets sont mémorisés comme des indices dans la liste des cartes tirées,
+pas comme des copies : la sauvegarde reste petite et ne peut pas désynchroniser
+une carte de son illustration.
+
 ## Réglages
 
 Niveau de difficulté, thèmes, durée du tour (30/45/60 s) ou du sablier

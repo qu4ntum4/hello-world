@@ -74,6 +74,10 @@
 *{ box-sizing:border-box; }
 html,body{ height:100%; margin:0; }
 
+/* Une règle d'auteur comme `.resume { display:flex }` l'emporte sur le
+   `[hidden] { display:none }` de la feuille du navigateur. */
+[hidden]{ display:none !important; }
+
 body{
   background:var(--paper);
   color:var(--ink);
@@ -173,6 +177,20 @@ p{ margin:0; }
 }
 .wordmark em{ font-style:normal; color:var(--grape); display:block; }
 .hero canvas{ width:132px; height:190px; }
+
+.resume{
+  display:flex; flex-wrap:wrap; align-items:center; gap:12px;
+  padding:14px 16px; border-radius:var(--r);
+  background:var(--surface); border:2.5px solid var(--teal);
+  box-shadow:var(--hard);
+}
+.resume .pic{ font-size:1.6rem; line-height:1; flex:none; }
+.resume-txt{ flex:1; min-width:150px; }
+.resume-txt b{ font-family:var(--display); font-size:1.15rem; display:block; line-height:1.2; }
+.resume-txt span{ color:var(--ink-2); font-size:.87rem; }
+.resume-btns{ display:flex; gap:8px; width:100%; }
+.resume-btns .btn{ flex:1; font-size:1rem; padding:11px 14px; }
+.resume-btns .btn.ghost{ flex:0 1 auto; }
 
 .modecard{
   display:flex; gap:14px; align-items:flex-start; text-align:left;
@@ -433,6 +451,18 @@ ul{ margin:0; padding:0; }
       <p class="lede">Fais deviner un maximum de cartes avant que le sable ne soit tombé.</p>
     </div>
 
+    <div class="resume" id="resumeCard" hidden>
+      <span class="pic" aria-hidden="true">⏸️</span>
+      <span class="resume-txt">
+        <b>Partie en cours</b>
+        <span id="resumeLine"></span>
+      </span>
+      <span class="resume-btns">
+        <button class="btn go" id="resumeGo">Reprendre</button>
+        <button class="btn ghost" id="resumeDrop">Abandonner</button>
+      </span>
+    </div>
+
     <button class="modecard" data-mode="coop">
       <span class="pic" aria-hidden="true">🤝</span>
       <span>
@@ -646,6 +676,11 @@ ul{ margin:0; padding:0; }
     <div class="panel">
       <h3>Trois niveaux</h3>
       <p>Chaque carte porte <strong>un seul mot</strong>. Trois paquets, à choisir avant de commencer : <strong>Facile</strong> pour les mots du quotidien, <strong>Moyen</strong> vers 8 à 10 ans, <strong>Costaud</strong> pour les mots rares. Si les âges sont très différents autour de la table, « Mélangé » pioche dans les trois.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Si on ferme par erreur</h3>
+      <p>La partie est enregistrée en continu sur l'appareil : le paquet, les scores, la manche, et jusqu'au temps qu'il restait au sablier. Si l'onglet se ferme ou que le téléphone se verrouille, l'accueil propose de <strong>reprendre là où vous en étiez</strong> — le même orateur, la même carte, les mêmes secondes.</p>
     </div>
 
     <div class="panel">
@@ -1068,6 +1103,7 @@ function show(name){
   const el = $("s-" + name);
   el.classList.add("on");
   el.scrollTop = 0;
+  if (name === "home") renderResume();
 }
 
 function shuffle(a){
@@ -1088,6 +1124,81 @@ function pool(){
   });
   cfg.custom.forEach(function(w){ all.push({ art:"✨", word:w, theme:"Vos cartes", level:0 }); });
   return all;
+}
+
+/* ── reprise de partie ──────────────────────────────────────
+   L'état vit dans le localStorage, à part des réglages. Les paquets
+   sont mémorisés comme des indices dans G.cards, pas comme des copies
+   des cartes : la sauvegarde reste petite et sans doublon.
+   ─────────────────────────────────────────────────────────── */
+
+const SAVE_KEY = "chrono-mimes-partie";
+const SAVE_TTL = 24 * 3600 * 1000;
+
+function saveGame(){
+  if (!G || !G.cards || G.over) return;
+  const ix = function(list){
+    return list.map(function(c){ return G.cards.indexOf(c); }).filter(function(i){ return i >= 0; });
+  };
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: 1, at: Date.now(), stage: G.stage || "intro", mode: G.mode,
+      cards: G.cards, deck: ix(G.deck), foundAll: ix(G.foundAll), turnFound: ix(G.turnFound),
+      manche: G.manche, leader: G.leader, sinceHand: G.sinceHand, doneCount: G.doneCount,
+      total: G.total, remain: G.remain, turn: G.turn, teams: G.teams,
+      introShownFor: G.introShownFor,
+    }));
+  }catch(e){ /* stockage plein ou indisponible : tant pis, on joue quand même */ }
+}
+
+function clearGame(){ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} }
+
+function readGame(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const g = JSON.parse(raw);
+    if (!g || g.v !== 1 || !Array.isArray(g.cards) || !Array.isArray(g.deck) || !g.deck.length) return null;
+    if (!MANCHES[g.mode] || g.manche >= MANCHES[g.mode].length) return null;
+    if (Date.now() - g.at > SAVE_TTL){ clearGame(); return null; }
+    return g;
+  }catch(e){ return null; }
+}
+
+function resumeGame(){
+  const g = readGame();
+  if (!g){ renderResume(); return; }
+  const pick = function(list){ return (list || []).map(function(i){ return g.cards[i]; }); };
+  G = {
+    mode: g.mode, manches: MANCHES[g.mode], cards: g.cards,
+    deck: pick(g.deck), foundAll: pick(g.foundAll), turnFound: pick(g.turnFound),
+    manche: g.manche, leader: g.leader || 0, sinceHand: g.sinceHand || 0,
+    doneCount: g.doneCount || 0, total: g.total, remain: g.remain,
+    turn: g.turn || 0, teams: g.teams, introShownFor: g.introShownFor,
+    resuming: g.stage === "play",
+  };
+  audio();
+  intro();
+}
+
+function ago(t){
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return "à l'instant";
+  if (m < 60) return "il y a " + m + " min";
+  return "il y a " + Math.round(m / 60) + " h";
+}
+
+function renderResume(){
+  const g = readGame(), el = $("resumeCard");
+  if (!g){ el.hidden = true; return; }
+  el.hidden = false;
+  const bits = [g.mode === "coop" ? "Tous ensemble" : "En équipes",
+                "manche " + (g.manche + 1) + " sur " + MANCHES[g.mode].length];
+  if (g.mode === "teams" && g.teams && g.teams[g.turn]) bits.push(g.teams[g.turn].name);
+  bits.push(g.deck.length + (g.deck.length > 1 ? " cartes à jouer" : " carte à jouer"));
+  $("resumeLine").textContent = bits.join(" · ") + " — " + ago(g.at);
+  $("resumeDrop").textContent = "Abandonner";
+  $("resumeDrop").dataset.armed = "";
 }
 
 function toast(msg){
@@ -1239,6 +1350,8 @@ function startGame(){
   }
   $("setupErr").hidden = true;
 
+  G.over       = false;
+  G.resuming   = false;
   G.cards      = shuffle(p).slice(0, need);
   G.manche     = 0;
   G.manches    = MANCHES[G.mode];
@@ -1273,18 +1386,27 @@ function fail(msg){
 
 function intro(){
   const m = G.manches[G.manche];
-  $("introBadge").textContent = "Manche " + (G.manche + 1) + " sur " + G.manches.length;
+  const back = !!G.resuming;
+  $("introBadge").textContent = back
+    ? "Reprise de la partie"
+    : "Manche " + (G.manche + 1) + " sur " + G.manches.length;
   $("introIcon").textContent = m.icon;
   $("introTitle").textContent = m.title;
   $("introRule").innerHTML = m.rule;
   if (G.mode === "coop"){
-    $("introWho").textContent = G.deck.length + " cartes à faire deviner — il reste " + fmtTime(G.remain) + " de sable.";
-    $("introGo").textContent = G.manche === 0 ? "Démarrer le sablier" : "On enchaîne !";
+    $("introWho").textContent = back
+      ? "Il reste " + G.deck.length + " cartes et " + fmtTime(G.remain) + " de sable."
+      : G.deck.length + " cartes à faire deviner — il reste " + fmtTime(G.remain) + " de sable.";
+    $("introGo").textContent = back ? "Reprendre" : (G.manche === 0 ? "Démarrer le sablier" : "On enchaîne !");
   } else {
-    $("introWho").textContent = "Au tour de " + G.teams[G.turn].name + ".";
-    $("introGo").textContent = "Démarrer";
+    $("introWho").textContent = back
+      ? "Au tour de " + G.teams[G.turn].name + " — il reste " + fmtTime(G.remain) + " à jouer."
+      : "Au tour de " + G.teams[G.turn].name + ".";
+    $("introGo").textContent = back ? "Reprendre" : "Démarrer";
   }
   G.introShownFor = G.manche;
+  G.stage = "intro";
+  saveGame();
   show("intro");
 }
 
@@ -1292,11 +1414,16 @@ function intro(){
    9. LE TOUR DE JEU
    ══════════════════════════════════════════════════════════ */
 
-let raf = null, lastTs = 0, lastWholeSec = -1;
+let raf = null, lastTs = 0, lastWholeSec = -1, lastSave = 0;
 
 function beginTurn(){
-  G.turnFound = [];
-  if (G.mode === "teams") G.remain = G.total;
+  if (G.resuming){
+    G.resuming = false;              // on reprend le tour là où il s'est arrêté
+  } else {
+    G.turnFound = [];
+    if (G.mode === "teams") G.remain = G.total;
+  }
+  G.stage = "play";
   locked = false;
   document.querySelectorAll(".card.ghost").forEach(function(g){ g.remove(); });
   lastWholeSec = -1;
@@ -1304,6 +1431,8 @@ function beginTurn(){
   nextCard(null);
   show("play");
   lastTs = performance.now();
+  lastSave = performance.now();
+  saveGame();
   if (!raf) raf = requestAnimationFrame(loop);
 }
 
@@ -1328,6 +1457,7 @@ function loop(ts){
     if (whole > 0 && whole <= 5) SFX.tick();
   }
   drawGlass($("glass"), 1 - G.remain / G.total, ts);
+  if (ts - lastSave > 2000){ lastSave = ts; saveGame(); }
 
   if (G.remain <= 0){
     G.remain = 0;
@@ -1415,6 +1545,7 @@ function onFound(){
   updateHud();
   if (!G.deck.length){ deckEmpty(); return; }
   nextCard("right");
+  saveGame();
 }
 
 function onSkip(){
@@ -1425,6 +1556,7 @@ function onSkip(){
   G.deck.push(c);
   SFX.skip();
   nextCard("left");
+  saveGame();
 }
 
 /* le paquet est vide : fin de manche */
@@ -1451,6 +1583,7 @@ function deckEmpty(){
     updateHud();
     toast("Manche " + (G.manche+1) + " — " + G.manches[G.manche].title + " !");
     nextCard("right");
+    saveGame();
     return;
   }
   stopLoop();
@@ -1498,6 +1631,8 @@ function turnEnd(title, line){
 
   G.turn = (G.turn + 1) % G.teams.length;
   $("teNext").textContent = "Au tour de " + G.teams[G.turn].name;
+  G.stage = "turnend";
+  saveGame();
   show("turnend");
 }
 
@@ -1531,6 +1666,8 @@ function escapeHtml(s){
 
 function endGame(won){
   stopLoop();
+  G.over = true;
+  clearGame();
   const icon = $("endIcon"), title = $("endTitle"), line = $("endLine");
 
   if (G.mode === "coop"){
@@ -1615,6 +1752,7 @@ function buildMvp(){
    ══════════════════════════════════════════════════════════ */
 
 loadCfg();
+renderResume();
 renderLevels();
 renderThemes();
 renderCustom();
@@ -1691,8 +1829,22 @@ $("btnHand").addEventListener("click", function(){
 });
 $("btnQuit").addEventListener("click", function(){
   stopLoop();
+  saveGame();                        // la partie reste reprenable depuis l'accueil
   show("home");
 });
+
+$("resumeGo").addEventListener("click", resumeGame);
+$("resumeDrop").addEventListener("click", function(){
+  if (this.dataset.armed !== "oui"){  // abandonner détruit la partie : on confirme
+    this.dataset.armed = "oui";
+    this.textContent = "Vraiment ?";
+    return;
+  }
+  clearGame(); renderResume();
+});
+
+document.addEventListener("visibilitychange", function(){ if (document.hidden) saveGame(); });
+window.addEventListener("pagehide", saveGame);
 
 $("teNext").addEventListener("click", function(){
   if (G.introShownFor !== G.manche) intro(); else beginTurn();
