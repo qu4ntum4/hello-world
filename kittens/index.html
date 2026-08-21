@@ -38,7 +38,10 @@
     <p id="accueil-erreur" class="erreur" role="alert"></p>
     <div id="diagnostic" class="diagnostic" hidden></div>
     <p id="relais-actif" class="relais" hidden></p>
-    <button id="btn-regles-accueil" class="lien-discret">Comment on joue ?</button>
+    <div class="liens-bas">
+      <button id="btn-regles-accueil" class="lien-discret">Comment on joue ?</button>
+      <button id="btn-reseau" class="lien-discret">Réglages réseau</button>
+    </div>
   </div>
 </section>
 
@@ -122,12 +125,54 @@
   </form>
 </aside>
 
+<aside id="panneau-reseau" class="panneau" hidden>
+  <header class="barre">
+    <span class="barre-titre">Réglages réseau</span>
+    <button id="btn-fermer-reseau" class="icone" aria-label="Fermer">✕</button>
+  </header>
+  <div class="regles">
+    <h3>Tester ma connexion</h3>
+    <p>Sans créer de partie, on regarde quelles adresses votre navigateur obtient.
+    C'est ce qui décide si vous pourrez jouer, et depuis où.</p>
+    <button id="btn-tester" class="bouton">Lancer le test</button>
+    <div id="resultat-test" class="diagnostic" hidden></div>
+
+    <h3>Relais de secours</h3>
+    <p>Deux navigateurs derrière des box grand public se trouvent presque toujours
+    tout seuls. Mais derrière un VPN, un réseau d'entreprise ou certains routeurs
+    d'opérateur, aucun chemin direct n'existe : il faut alors un relais.</p>
+    <p>Il n'existe pas de relais public gratuit et anonyme fiable — ils demandent
+    tous un compte. Créez-en un en deux minutes chez
+    <a href="https://www.metered.ca/tools/openrelay/" target="_blank" rel="noopener">Metered</a>
+    ou <a href="https://developers.cloudflare.com/calls/turn/" target="_blank" rel="noopener">Cloudflare</a>,
+    puis collez-le ici. Il voyagera dans vos liens d'invitation, pour que vos
+    joueurs en profitent aussi.</p>
+    <label class="champ">
+      <span>Adresse du relais</span>
+      <input id="turn-url" type="text" placeholder="turn:mon.relais.example:3478" autocapitalize="off" spellcheck="false">
+    </label>
+    <label class="champ">
+      <span>Identifiant</span>
+      <input id="turn-user" type="text" autocapitalize="off" spellcheck="false">
+    </label>
+    <label class="champ">
+      <span>Secret</span>
+      <input id="turn-pass" type="text" autocapitalize="off" spellcheck="false">
+    </label>
+    <button id="btn-turn-garder" class="bouton bouton--majeur">Enregistrer</button>
+    <button id="btn-turn-oublier" class="bouton">Retirer le relais</button>
+    <p class="note" style="margin-top:16px">Un relais achemine des paquets chiffrés
+    de bout en bout : il transporte sans pouvoir lire vos cartes. Mais le trafic
+    passe par lui, contrairement au service de rendez-vous.</p>
+  </div>
+</aside>
+
 <aside id="panneau-regles" class="panneau" hidden>
   <header class="barre">
     <span class="barre-titre">Les règles</span>
     <button id="btn-fermer-regles" class="icone" aria-label="Fermer">✕</button>
   </header>
-  <div class="regles"></div>
+  <div id="texte-regles" class="regles"></div>
 </aside>
 
 <div id="bandeau" class="bandeau" role="status"></div>

@@ -286,19 +286,25 @@ function echouer(e, code) {
       </ul>`;
   } else if (e && (e.type === 'lien-bloque' || e.type === 'webrtc')) {
     const c = (e.ice && e.ice.candidats) || {};
+    const d = (e.ice && e.ice.distants) || {};
     const etat = (e.ice && e.ice.etat) || 'inconnu';
+    const totalDistant = (d.host || 0) + (d.srflx || 0) + (d.relay || 0);
     const pistes = [];
-    if (!c.srflx && !c.relay) {
-      pistes.push("Votre navigateur n'a obtenu <b>aucune adresse joignable de l'extérieur</b> : STUN et les relais sont bloqués tous les deux. C'est un pare-feu strict, un VPN, ou un réseau d'entreprise.");
-    } else if (!c.relay) {
-      pistes.push("Aucun <b>relais</b> n'a répondu. Sans lui, il faut un chemin direct — impossible derrière certains routeurs.");
+    if (!totalDistant) {
+      pistes.push("<b>L'hôte ne nous a envoyé aucune adresse.</b> Le blocage est de son côté : qu'il ouvre « Réglages réseau » puis « Tester ma connexion » sur son appareil.");
+    } else if (!c.srflx && !c.relay) {
+      pistes.push("Votre navigateur n'a obtenu <b>aucune adresse joignable de l'extérieur</b>. Pare-feu strict, VPN, ou réseau d'entreprise.");
+    } else if (!c.relay && !d.relay) {
+      pistes.push("Vous avez chacun une adresse publique, mais <b>aucun relais</b> des deux côtés. Vos routeurs ne laissent pas passer de chemin direct : il faut un relais. Voyez « Réglages réseau ».");
     } else {
-      pistes.push("Un relais a bien répondu de votre côté ; c'est donc <b>chez l'hôte</b> que le passage est bloqué. Faites-lui recharger la page et recréer une table.");
+      pistes.push('Les deux camps ont des adresses, mais aucun couple ne fonctionne. Un relais de secours réglé des deux côtés lèvera le blocage.');
     }
-    pistes.push('Le plus sûr pour trancher : essayez en partage de connexion depuis un téléphone, des deux côtés.');
+    pistes.push('Pour trancher vite : essayez en partage de connexion depuis un téléphone, des deux côtés.');
     corps = `<b>La table existe, mais la liaison entre vos deux navigateurs ne s'ouvre pas.</b>
       <ul>${pistes.map((x) => `<li>${x}</li>`).join('')}</ul>
-      <p class="technique">Adresses obtenues — locales ${c.host || 0}, publiques ${c.srflx || 0}, relayées ${c.relay || 0} · état ICE : ${V.echapper(etat)}${R.turnChoisi() ? ' · relais personnalisé' : ''}</p>`;
+      <p class="technique">Vos adresses — locales ${c.host || 0}, publiques ${c.srflx || 0}, relayées ${c.relay || 0}<br>
+      Celles de l'hôte — locales ${d.host || 0}, publiques ${d.srflx || 0}, relayées ${d.relay || 0}<br>
+      État ICE : ${V.echapper(etat)}${R.turnChoisi() ? ' · relais personnalisé' : ' · aucun relais réglé'}</p>`;
   } else if (e && e.type === 'browser-incompatible') {
     corps = `<b>Ce navigateur ne sait pas établir de liaison directe.</b>
       <ul><li>Il faut Chrome, Firefox, Safari ou Edge à jour. Certains navigateurs intégrés
@@ -500,6 +506,42 @@ function brancher() {
       if (p === '#panneau-chat' && app.etat) { app.chatVu = app.etat.chat.length; $('#pastille-chat').hidden = true; }
     });
   }
+  $('#btn-reseau').addEventListener('click', () => {
+    const [urls = '', user = '', pass = ''] = (R.turnChoisi() || '').split('|');
+    $('#turn-url').value = urls; $('#turn-user').value = user; $('#turn-pass').value = pass;
+    $('#panneau-reseau').hidden = false;
+  });
+  $('#btn-fermer-reseau').addEventListener('click', () => { $('#panneau-reseau').hidden = true; });
+  $('#btn-turn-garder').addEventListener('click', () => {
+    const url = $('#turn-url').value.trim();
+    if (!url) return V.bandeau("Indiquez l'adresse du relais.");
+    R.enregistrerTurn([url, $('#turn-user').value.trim(), $('#turn-pass').value.trim()].join('|'));
+    V.bandeau('Relais enregistré. Il voyagera dans vos invitations.');
+  });
+  $('#btn-turn-oublier').addEventListener('click', () => {
+    R.enregistrerTurn('');
+    $('#turn-url').value = ''; $('#turn-user').value = ''; $('#turn-pass').value = '';
+    V.bandeau('Relais retiré.');
+  });
+  $('#btn-tester').addEventListener('click', async () => {
+    const b = $('#btn-tester');
+    const z = $('#resultat-test');
+    b.disabled = true; b.textContent = 'Test en cours…';
+    z.hidden = false;
+    z.innerHTML = '<div class="statut"><i class="rotule"></i><span>On rassemble les adresses…</span></div>';
+    const r = await R.testerConnexion();
+    b.disabled = false; b.textContent = 'Relancer le test';
+    if (r.erreur) { z.innerHTML = `<b>${V.echapper(r.erreur)}</b>`; return; }
+    const lignes = [
+      [r.host > 0, 'Réseau local', r.host > 0 ? 'votre machine est visible sur son propre réseau.' : "aucune adresse locale — c'est très inhabituel."],
+      [r.srflx > 0, 'Adresse publique (STUN)', r.srflx > 0 ? 'vos amis peuvent apprendre où vous joindre.' : 'bloquée : vous ne pourrez jouer que sur votre réseau local.'],
+      [r.relay > 0, 'Relais de secours', r.relay > 0 ? 'opérationnel — vous pourrez jouer depuis à peu près partout.' : (r.relaisConfigure ? 'réglé mais sans réponse : vérifiez adresse et identifiants.' : 'aucun relais réglé. Sans lui, il faut un chemin direct entre les deux joueurs.')],
+    ];
+    z.innerHTML = `<b>${r.srflx > 0 && r.relay > 0 ? 'Tout est au vert.' : r.srflx > 0 ? 'Jouable, mais pas depuis tous les réseaux.' : 'Connexion très restreinte.'}</b>
+      <ul>${lignes.map(([ok, titre, texte]) => `<li>${ok ? '✅' : '⚠️'} <b>${titre}</b> — ${texte}</li>`).join('')}</ul>
+      <p class="technique">Adresses obtenues — locales ${r.host}, publiques ${r.srflx}, relayées ${r.relay}</p>`;
+  });
+
   $('#btn-fermer-chat').addEventListener('click', () => { $('#panneau-chat').hidden = true; });
   $('#btn-fermer-regles').addEventListener('click', () => { $('#panneau-regles').hidden = true; });
 

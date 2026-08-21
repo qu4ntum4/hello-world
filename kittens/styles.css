@@ -138,6 +138,10 @@ input[type=text]:focus { border-color: #6a5bb5; box-shadow: 0 0 0 3px rgba(127, 
 .temoin.hors-ligne { background: var(--vif-2); animation: clignote 1s ease-in-out infinite; }
 @keyframes clignote { 50% { opacity: .25; } }
 .lien-discret { color: var(--doux); text-decoration: underline; font-size: 14px; margin-top: 10px; }
+.liens-bas { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.regles .bouton + .bouton { margin-top: 8px; }
+.regles .diagnostic { margin-bottom: 8px; }
+.regles a { color: var(--vif-2); }
 
 /* ————————————————————————————————————————— salon */
 

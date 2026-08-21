@@ -218,6 +218,28 @@ if (await perdu.locator('#btn-rejoindre.occupe').count()) throw new Error('le bo
 if (process.env.CAPTURES) await perdu.screenshot({ path: process.env.CAPTURES + '/diagnostic.png' });
 console.log('diagnostic du code inconnu ✓');
 
+// Réglages réseau : le test de connexion doit rendre un verdict lisible, et le
+// relais doit se garder et se relire.
+const reseau = await page('réseau', mobile);
+await reseau.goto(BASE);
+await reseau.click('#btn-reseau');
+await reseau.fill('#turn-url', 'turn:essai.example:3478');
+await reseau.fill('#turn-user', 'moi');
+await reseau.fill('#turn-pass', 'secret');
+await reseau.click('#btn-turn-garder');
+await reseau.reload();
+await reseau.click('#btn-reseau');
+if ((await reseau.inputValue('#turn-url')) !== 'turn:essai.example:3478') throw new Error('le relais ne se relit pas');
+if (!(await reseau.locator('#relais-actif:not([hidden])').count())) throw new Error("le relais réglé n'est pas signalé à l'accueil");
+await reseau.click('#btn-tester');
+await reseau.waitForSelector('#resultat-test ul', { timeout: 30000 });
+const verdict = (await reseau.textContent('#resultat-test')).replace(/\s+/g, ' ').trim();
+console.log('test de connexion :', verdict.slice(0, 110), '…');
+if (!/locales [1-9]/.test(verdict)) throw new Error('le test ne relève aucune adresse locale');
+if (process.env.CAPTURES) await reseau.screenshot({ path: process.env.CAPTURES + '/reseau.png' });
+await reseau.click('#btn-turn-oublier');
+console.log('réglages réseau ✓');
+
 // Liaison impossible : on empêche l'invité de terminer la négociation. La page
 // ne doit surtout pas conclure « code inconnu » — la table, elle, existe.
 const ctxSourd = await nav.newContext({ viewport: mobile });
@@ -234,8 +256,10 @@ await sourd.waitForSelector('#diagnostic:not([hidden])', { timeout: 60000 });
 const bloque = (await sourd.textContent('#diagnostic')).replace(/\s+/g, ' ').trim();
 console.log('diagnostic liaison :', bloque.slice(0, 100), '…');
 if (!bloque.includes("ne s'ouvre pas")) throw new Error('liaison bloquée mal diagnostiquée — reçu : ' + bloque.slice(-90));
-if (!bloque.includes('Adresses obtenues')) throw new Error('le relevé ICE manque');
-if (!/locales [1-9]/.test(bloque)) throw new Error('aucune adresse locale relevée : la sonde ne lit rien');
+if (!bloque.includes('Vos adresses')) throw new Error('le relevé ICE manque');
+if (!bloque.includes("Celles de l'hôte")) throw new Error("le relevé ne dit rien de l'hôte");
+if (!/Vos adresses — locales [1-9]/.test(bloque)) throw new Error('la sonde ne lit aucune adresse locale');
+if (!/Celles de l'hôte — locales [1-9]/.test(bloque)) throw new Error("la sonde ne lit pas les adresses distantes");
 if (process.env.CAPTURES) await sourd.screenshot({ path: process.env.CAPTURES + '/bloque.png' });
 console.log('diagnostic de la liaison bloquée ✓');
 

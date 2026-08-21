@@ -31,8 +31,14 @@ seul tient le paquet, applique les règles et envoie à chacun sa propre vue —
 personne ne reçoit la main de personne. Les autres navigateurs s'y branchent
 en WebRTC (via [PeerJS](https://peerjs.com)).
 
-Un service public de rendez-vous sert uniquement à mettre deux navigateurs en
-relation ; **aucune carte n'y transite**. Pour utiliser le vôtre :
+Un service public de rendez-vous met les deux navigateurs en relation ; aucune
+carte n'y transite. Quand aucun chemin direct n'existe (VPN, réseau
+d'entreprise, certains routeurs), il faut en plus un **relais de secours**
+(TURN) : il achemine des paquets chiffrés de bout en bout, sans pouvoir les
+lire. Aucun n'est fourni par défaut — il n'existe pas de relais public gratuit
+et anonyme fiable — mais l'écran « Réglages réseau » permet d'en régler un et
+de tester sa connexion avant même de créer une partie. Pour le service de
+rendez-vous :
 
 ```
 …/kittens/?relais=mon.serveur.example:9000

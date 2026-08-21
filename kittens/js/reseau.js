@@ -29,19 +29,19 @@ export function oublierRelais() {
   localStorage.removeItem('chatons.relais');
 }
 
-// Deux navigateurs derrière des box grand public trouvent presque toujours un
-// chemin direct avec du STUN seul. Mais dès qu'un NAT symétrique, un VPN ou un
-// pare-feu d'entreprise s'en mêle, il n'existe aucun chemin direct : il faut un
-// relais TURN, sans quoi la liaison ne peut tout simplement pas s'ouvrir.
-// Le relais ne voit passer que du chiffré — le canal est protégé de bout en
-// bout par DTLS — mais il voit passer les paquets, contrairement au service de
-// rendez-vous. D'où la possibilité de mettre le sien.
-const TURN_PUBLIC = [
+// Le STUN apprend à chaque navigateur son adresse publique ; c'est gratuit,
+// anonyme, et cela suffit derrière la plupart des box grand public.
+// Un NAT symétrique, un VPN ou un pare-feu d'entreprise, en revanche, ne
+// laissent passer aucun chemin direct : il faut alors un relais TURN.
+// Il n'existe aucun relais public gratuit et anonyme fiable — ils demandent
+// tous un compte — donc le projet n'en impose aucun : à chacun le sien, réglé
+// dans « Réglages réseau ». Un relais achemine des paquets chiffrés de bout en
+// bout par DTLS : il transporte sans pouvoir lire, mais il voit passer le
+// trafic, contrairement au service de rendez-vous.
+const STUN_PUBLIC = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'stun:stun.nextcloud.com:443' },
 ];
 
 // ?turn=turn:mon.serveur:3478|utilisateur|secret — mémorisé et transmis dans le
@@ -52,13 +52,43 @@ export function turnChoisi() {
 
 export function oublierTurn() { localStorage.removeItem('chatons.turn'); }
 
+export function enregistrerTurn(brut) {
+  if (brut) localStorage.setItem('chatons.turn', brut);
+  else localStorage.removeItem('chatons.turn');
+}
+
 export function serveursIce() {
   const brut = turnChoisi();
-  if (!brut) return TURN_PUBLIC;
+  if (!brut) return STUN_PUBLIC;
   localStorage.setItem('chatons.turn', brut);
-  const [urls, username, credential] = brut.split('|');
-  const perso = username ? { urls, username, credential } : { urls };
-  return [TURN_PUBLIC[0], perso];
+  return [...STUN_PUBLIC, ...brut.split(',').map((bloc) => {
+    const [urls, username, credential] = bloc.split('|').map((x) => x.trim());
+    return username ? { urls, username, credential } : { urls };
+  }).filter((x) => x.urls)];
+}
+
+// Rassemble les adresses joignables sans monter la moindre liaison : de quoi
+// savoir, avant même de créer une partie, si le réseau permettra de jouer.
+export function testerConnexion(delai = 9000) {
+  return new Promise((resolve) => {
+    const vus = { host: 0, srflx: 0, relay: 0 };
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: serveursIce() }); }
+    catch { return resolve({ ...vus, erreur: 'WebRTC indisponible dans ce navigateur.' }); }
+    const rendre = () => {
+      clearTimeout(minuteur);
+      try { pc.close(); } catch {}
+      resolve({ ...vus, relaisConfigure: !!turnChoisi() });
+    };
+    const minuteur = setTimeout(rendre, delai);
+    pc.addEventListener('icecandidate', (ev) => {
+      if (!ev.candidate) return rendre();
+      const t = / typ (\w+)/.exec(ev.candidate.candidate || '');
+      if (t && vus[t[1]] !== undefined) vus[t[1]] += 1;
+    });
+    pc.createDataChannel('sonde');
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => rendre());
+  });
 }
 
 function optionsPair() {
@@ -173,19 +203,26 @@ export async function heberger({ surMessage, surDepart, surErreur, surEtat = () 
 // n'est joignable.
 function sonderIce(conn) {
   const vus = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+  const distants = { host: 0, srflx: 0, prflx: 0, relay: 0 };
   let etat = 'jamais démarré';
   let branche = false;
+
+  const compter = (panier, texte) => {
+    const t = texte && / typ (\w+)/.exec(texte);
+    if (t && panier[t[1]] !== undefined) panier[t[1]] += 1;
+  };
 
   const brancher = () => {
     const pc = conn.peerConnection;
     if (!pc || branche) return branche;
     branche = true;
     etat = pc.iceConnectionState;
-    pc.addEventListener('icecandidate', (ev) => {
-      const t = ev.candidate && ev.candidate.candidate && / typ (\w+)/.exec(ev.candidate.candidate);
-      if (t && vus[t[1]] !== undefined) vus[t[1]] += 1;
-    });
+    pc.addEventListener('icecandidate', (ev) => compter(vus, ev.candidate && ev.candidate.candidate));
     pc.addEventListener('iceconnectionstatechange', () => { etat = pc.iceConnectionState; });
+    // Ce que l'autre camp nous envoie est l'autre moitié du diagnostic : s'il
+    // n'envoie rien, le blocage est chez lui, pas chez nous.
+    const ajouter = pc.addIceCandidate.bind(pc);
+    pc.addIceCandidate = (c) => { compter(distants, c && c.candidate); return ajouter(c); };
     return true;
   };
 
@@ -193,7 +230,7 @@ function sonderIce(conn) {
     const t = setInterval(() => { if (brancher()) clearInterval(t); }, 120);
     setTimeout(() => clearInterval(t), 8000);
   }
-  return () => ({ candidats: { ...vus }, etat });
+  return () => ({ candidats: { ...vus }, distants: { ...distants }, etat });
 }
 
 // ————————————————————————————————————————————————————————————— invité

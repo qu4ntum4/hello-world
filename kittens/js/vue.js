@@ -397,7 +397,7 @@ export function rendreChat(selecteur, messages) {
 // ————————————————————————————————————————————————————— règles
 
 export function rendreRegles() {
-  const z = document.querySelector('.regles');
+  const z = document.querySelector('#texte-regles');
   if (z.dataset.pret) return;
   z.dataset.pret = '1';
   const fiches = ['bombe', 'desamorcage', 'attaque', 'passer', 'faveur', 'melanger', 'avenir', 'nope', 'tacochat']
