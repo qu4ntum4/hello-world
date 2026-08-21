@@ -25,6 +25,10 @@ export function relaisChoisi() {
   return new URLSearchParams(location.search).get('relais') || localStorage.getItem('chatons.relais') || '';
 }
 
+export function oublierRelais() {
+  localStorage.removeItem('chatons.relais');
+}
+
 function optionsPair() {
   const o = { debug: 0 };
   const brut = relaisChoisi();
@@ -51,7 +55,8 @@ function attendreOuverture(peer) {
 
 export function messageErreur(e) {
   switch (e && e.type) {
-    case 'peer-unavailable': return "Aucune partie ne répond à ce code. Vérifiez-le, ou demandez à l'hôte s'il est toujours sur la page.";
+    case 'peer-unavailable': return "Aucune table n'est ouverte sous ce code.";
+    case 'lien-bloque': return "La table a été trouvée, mais la liaison directe entre vos deux navigateurs ne s'établit pas.";
     case 'unavailable-id':   return 'Ce code est déjà pris, on en tire un autre.';
     case 'browser-incompatible': return "Ce navigateur ne gère pas le WebRTC. Essayez Chrome, Firefox, Safari ou Edge à jour.";
     case 'network': case 'server-error': case 'socket-error': case 'socket-closed':
@@ -64,7 +69,7 @@ export function messageErreur(e) {
 // ————————————————————————————————————————————————————————————— hôte
 
 // Ouvre la table. Si le code est déjà pris, on en tire un autre (jusqu'à 5 fois).
-export async function heberger({ surMessage, surDepart, surErreur }) {
+export async function heberger({ surMessage, surDepart, surErreur, surEtat = () => {} }) {
   let peer = null;
   let code = null;
   for (let essai = 0; essai < 5; essai++) {
@@ -100,7 +105,11 @@ export async function heberger({ surMessage, surDepart, surErreur }) {
     if (e && e.type === 'peer-unavailable') return; // un invité a raccroché
     surErreur(e);
   });
-  peer.on('disconnected', () => { try { peer.reconnect(); } catch {} });
+  peer.on('disconnected', () => {
+    surEtat('hors-ligne');
+    try { peer.reconnect(); } catch {}
+  });
+  peer.on('open', () => surEtat('en-ligne'));
 
   const veille = setInterval(() => {
     const t = Date.now();
@@ -134,23 +143,34 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
   let conn = null;
   let vivant = true;
   let battement = null;
-  let essais = 0;
+  let essais = 0;        // reconnexions après une partie déjà établie
+  let tentatives = 0;    // essais du tout premier branchement
+  let etabli = false;    // a-t-on déjà été connecté à l'hôte au moins une fois ?
+
+  // Le registre du service de rendez-vous met parfois une seconde à voir une
+  // table qui vient d'ouvrir : un premier « introuvable » ne prouve rien.
+  const MAX_TENTATIVES = 3;
 
   async function brancher() {
     if (!vivant) return;
-    surEtat('connexion');
+    tentatives += 1;
+    surEtat(etabli ? 'reconnexion' : 'rendez-vous', { tentative: tentatives, total: MAX_TENTATIVES });
     peer = new Peer(optionsPair());
     try { await attendreOuverture(peer); } catch (e) { return echec(e); }
     if (!vivant) { peer.destroy(); return; }
 
+    surEtat(etabli ? 'reconnexion' : 'appel', { tentative: tentatives, total: MAX_TENTATIVES });
     conn = peer.connect(idPair(code), { reliable: true });
+
+    // Le service a bien transmis notre appel, mais la liaison directe ne
+    // s'ouvre pas : ce n'est pas la même panne qu'un code inconnu.
     const minuteurOuverture = setTimeout(() => {
-      if (conn && !conn.open) { try { conn.close(); } catch {} echec({ type: 'peer-unavailable' }); }
+      if (conn && !conn.open) { try { conn.close(); } catch {} echec({ type: 'lien-bloque' }); }
     }, 15000);
 
     conn.on('open', () => {
       clearTimeout(minuteurOuverture);
-      essais = 0;
+      essais = 0; tentatives = 0; etabli = true;
       if (bonjour) { try { conn.send(bonjour()); } catch {} }
       surEtat('connecte');
       clearInterval(battement);
@@ -161,8 +181,7 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
     conn.on('error', () => {});
     peer.on('error', (e) => {
       clearTimeout(minuteurOuverture);
-      if (e && e.type === 'peer-unavailable' && essais === 0) return echec(e);
-      rebrancher();
+      if (etabli) rebrancher(); else echec(e);
     });
   }
 
@@ -170,8 +189,16 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
     clearInterval(battement);
     if (peer) { try { peer.destroy(); } catch {} }
     if (!vivant) return;
-    if (essais === 0) { vivant = false; surErreur(e); return; }
-    rebrancher();
+    if (etabli) return rebrancher();
+    // Avant la première connexion : on retente le code quelques fois.
+    const vautLaPeine = e && (e.type === 'peer-unavailable' || e.type === 'lien-bloque');
+    if (vautLaPeine && tentatives < MAX_TENTATIVES) {
+      surEtat('nouvelle-tentative', { tentative: tentatives, total: MAX_TENTATIVES });
+      setTimeout(brancher, 1600);
+      return;
+    }
+    vivant = false;
+    surErreur(e);
   }
 
   function rebrancher() {

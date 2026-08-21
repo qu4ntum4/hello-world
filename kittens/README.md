@@ -48,6 +48,16 @@ Conséquences à connaître :
 - une table qu'un absent bloquerait se débloque toute seule (il pioche à sa
   place, ou son chaton explose).
 
+## Quand ça ne marche pas
+
+« Aucune table n'est ouverte sous ce code » a trois causes bien distinctes, et
+la page les sépare plutôt que de renvoyer un message unique : la table n'existe
+plus (l'hôte a fermé sa page — le code meurt avec l'onglet), la liaison directe
+est bloquée (VPN ou pare-feu qui filtre le WebRTC), ou le service de rendez-vous
+est injoignable. La page réessaie trois fois avant de conclure, en le disant à
+l'écran, et le salon affiche un témoin qui passe à l'orange si la table de
+l'hôte décroche.
+
 ## Les règles couvertes
 
 Le jeu de base complet, à deux à cinq joueurs :

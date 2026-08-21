@@ -199,10 +199,17 @@ function jetonPour(code) {
 async function creer() {
   const pseudo = lirePseudo();
   if (!pseudo) return;
-  occupe($('#btn-creer'), 'Ouverture de la table…');
+  occupe($('#btn-creer'));
+  statut('Ouverture de la table…');
   try {
     const h = await R.heberger({
       surMessage: traiter,
+      surEtat: (e) => {
+        const t = $('#etat-table');
+        t.classList.toggle('hors-ligne', e === 'hors-ligne');
+        t.title = e === 'hors-ligne' ? 'Table déconnectée — reconnexion…' : 'Table en ligne';
+        if (e === 'hors-ligne') V.bandeau('Table déconnectée du service de rendez-vous — reconnexion…', 4000);
+      },
       surDepart: (cle) => {
         const j = joueurParCle(cle);
         if (!j) return;
@@ -218,9 +225,8 @@ async function creer() {
     surveiller();
     diffuser();
   } catch (e) {
-    erreurAccueil(R.messageErreur(e));
-  } finally {
     libere($('#btn-creer'), 'Créer une partie');
+    echouer(e, null);
   }
 }
 
@@ -229,26 +235,74 @@ async function rejoindre(codeBrut) {
   if (!pseudo) return;
   const code = R.normaliserCode(codeBrut);
   if (code.length < 4) return erreurAccueil('Entrez le code de la partie (5 caractères).');
-  occupe($('#btn-rejoindre'), '…');
+  occupe($('#btn-rejoindre'));
+  statut('Connexion au service de rendez-vous…');
   try {
     const lien = await R.rejoindre(code, {
       bonjour: () => ({ t: 'bonjour', jeton: jetonPour(code), pseudo: app.pseudo }),
       surMessage: recevoir,
-      surEtat: (e) => {
-        if (e === 'reconnexion') V.bandeau('Connexion perdue, on se rebranche…', 4000);
+      surEtat: (e, info = {}) => {
+        const suite = info.total > 1 && info.tentative > 1 ? ` (essai ${info.tentative}/${info.total})` : '';
+        if (e === 'rendez-vous') statut('Connexion au service de rendez-vous…' + suite);
+        else if (e === 'appel') statut(`On appelle la table ${code}…` + suite);
+        else if (e === 'nouvelle-tentative') statut('Pas de réponse, on réessaie…' + suite);
+        else if (e === 'connecte') statut('');
+        else if (e === 'reconnexion') {
+          statut('Connexion perdue, on se rebranche…');
+          if (app.etat) V.bandeau('Connexion perdue, on se rebranche…', 4000);
+        }
       },
       surErreur: (e) => {
-        if (app.etat) V.bandeau(R.messageErreur(e), 6000);
-        else { V.ecran('accueil'); erreurAccueil(R.messageErreur(e)); }
+        if (app.etat) { V.bandeau(R.messageErreur(e), 6000); return; }
+        V.ecran('accueil');
+        libere($('#btn-rejoindre'), 'Rejoindre');
+        echouer(e, code);
       },
     });
     app.role = 'invite'; app.transport = lien; app.code = code;
     location.hash = code;
   } catch (e) {
-    erreurAccueil(R.messageErreur(e));
-  } finally {
     libere($('#btn-rejoindre'), 'Rejoindre');
+    echouer(e, code);
   }
+}
+
+// Une panne pair à pair a plusieurs causes très différentes ; les confondre
+// derrière un seul message envoie chercher au mauvais endroit.
+function echouer(e, code) {
+  statut('');
+  erreurAccueil(R.messageErreur(e));
+  const relais = R.relaisChoisi();
+  const ouRelais = relais
+    ? `Vous passez par le service <code>${V.echapper(relais)}</code> ; l'hôte doit utiliser exactement le même.`
+    : `Vous passez par le service public, comme l'hôte par défaut.`;
+  let corps = '';
+  if (e && e.type === 'peer-unavailable') {
+    corps = `<b>Le service de rendez-vous répond, mais aucune table n'est ouverte sous le code ${V.echapper(code || '')}.</b>
+      <ul>
+        <li><b>L'hôte a-t-il toujours sa page ouverte ?</b> La partie vit dans son onglet. Fermé, rechargé, ou téléphone verrouillé : la table disparaît, et le code avec elle.</li>
+        <li><b>Le code a-t-il changé ?</b> Chaque clic sur « Créer une partie » en tire un nouveau. Reprenez celui affiché <em>en ce moment</em> chez l'hôte.</li>
+        <li>${ouRelais}</li>
+      </ul>`;
+  } else if (e && e.type === 'lien-bloque') {
+    corps = `<b>La table existe, mais vos deux navigateurs n'arrivent pas à se parler en direct.</b>
+      <ul>
+        <li>C'est presque toujours un réseau d'entreprise, un VPN ou un pare-feu qui bloque le WebRTC.</li>
+        <li>Essayez en partage de connexion depuis un téléphone, des deux côtés.</li>
+      </ul>`;
+  } else {
+    corps = `<b>Le service de rendez-vous est injoignable.</b>
+      <ul>
+        <li>Vérifiez votre connexion, puis réessayez.</li>
+        <li>${ouRelais}</li>
+      </ul>`;
+  }
+  diagnostic(corps + '<button class="bouton" data-reessayer>Réessayer</button>');
+  $('#diagnostic').querySelector('[data-reessayer]').addEventListener('click', () => {
+    diagnostic('');
+    erreurAccueil('');
+    if (code) rejoindre(code); else creer();
+  });
 }
 
 function recevoir(msg) {
@@ -272,6 +326,8 @@ function recevoirPrive(m) {
 // ————————————————————————————————————————————————————— rendu et réactions
 
 function appliquerEtat(e) {
+  statut('');
+  diagnostic('');
   app.precedent = app.etat;
   // En arrivant à table, on ne traîne pas les messages du salon comme non lus.
   if ((!app.etat || app.etat.phase === 'salon') && e.phase !== 'salon') app.chatVu = e.chat.length;
@@ -344,13 +400,25 @@ function lirePseudo() {
   localStorage.setItem('chatons.pseudo', v);
   return v;
 }
+function statut(texte) {
+  const z = $('#statut');
+  z.hidden = !texte;
+  if (texte) z.querySelector('span').textContent = texte;
+}
+
+function diagnostic(html) {
+  const z = $('#diagnostic');
+  z.hidden = !html;
+  z.innerHTML = html || '';
+}
+
 function erreurAccueil(t, douce = false) {
   const z = $('#accueil-erreur');
   z.textContent = t;
   z.style.color = douce ? 'var(--doux)' : '';
 }
-function occupe(b, t) { b.disabled = true; b.textContent = t; erreurAccueil(''); }
-function libere(b, t) { b.disabled = false; b.textContent = t; }
+function occupe(b) { b.disabled = true; b.classList.add('occupe'); erreurAccueil(''); diagnostic(''); }
+function libere(b, t) { b.disabled = false; b.classList.remove('occupe'); b.textContent = t; }
 
 function quitter() {
   if (app.transport) app.transport.fermer();
@@ -371,6 +439,17 @@ function brancher() {
     if ($('#pseudo').value) $('#btn-rejoindre').classList.add('bouton--majeur');
     else $('#pseudo').focus();
     erreurAccueil(`Partie ${codeUrl} — entrez votre prénom et rejoignez.`, true);
+  }
+
+  const relais = R.relaisChoisi();
+  if (relais) {
+    const z = $('#relais-actif');
+    z.hidden = false;
+    z.innerHTML = `Service de rendez-vous personnalisé : <code>${V.echapper(relais)}</code> — `;
+    const b = document.createElement('button');
+    b.textContent = 'revenir au service public';
+    b.addEventListener('click', () => { R.oublierRelais(); location.search = ''; });
+    z.appendChild(b);
   }
 
   $('#btn-creer').addEventListener('click', () => { S.reveiller(); creer(); });

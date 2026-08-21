@@ -116,7 +116,6 @@ if (process.env.CAPTURES) await A.screenshot({ path: process.env.CAPTURES + '/re
 await A.click('#btn-fermer-regles');
 // Reconnexion : on ferme brutalement l'onglet de l'invité, il revient sur le
 // même lien et doit retrouver sa place et sa main.
-const avant = await B.locator('#main-cartes .carte').count();
 await B.close();
 await A.waitForFunction(() => [...document.querySelectorAll('.adversaire')].some((e) => e.querySelector('.absent-tag')),
   null, { timeout: 30000 });
@@ -126,10 +125,14 @@ await B2.goto(BASE + '#' + code);
 await B2.fill('#pseudo', 'Bob');
 await B2.click('#btn-rejoindre');
 await B2.waitForSelector('#table.actif', { timeout: 30000 });
-await B2.waitForTimeout(1200);
-const apres = await B2.locator('#main-cartes .carte').count();
-console.log('main avant/après reconnexion :', avant, '/', apres);
-if (apres !== avant) throw new Error("la main n'a pas été retrouvée");
+await B2.waitForTimeout(1500);
+// Pendant l'absence, l'hôte joue à la place de l'absent pour ne pas figer la
+// table : la main a donc pu bouger. Ce qui doit tenir, c'est qu'elle
+// corresponde exactement à ce que l'hôte lui compte.
+const retrouvee = await B2.locator('#main-cartes .carte').count();
+const vueParLHote = Number((await A.locator('.adversaire', { hasText: 'Bob' }).locator('.cartes').textContent()).match(/\d+/)[0]);
+console.log('main retrouvée :', retrouvee, '| comptée par l\'hôte :', vueParLHote);
+if (retrouvee !== vueParLHote || retrouvee === 0) throw new Error('la main ne correspond pas à celle de la table');
 const joueursApres = await A.locator('.adversaire').count();
 if (joueursApres !== 2) throw new Error('un siège fantôme est apparu');
 console.log('reconnexion : place et cartes retrouvées ✓');
@@ -157,6 +160,27 @@ for (let tentative = 0; tentative < 12 && !joue; tentative++) {
   }
 }
 if (!joue) throw new Error('aucun coup joué');
+
+// Code inexistant : l'attente doit être visible, puis le diagnostic doit
+// nommer la bonne cause plutôt qu'un message unique fourre-tout.
+const perdu = await page('égaré', mobile);
+await perdu.goto(BASE);
+await perdu.fill('#pseudo', 'Dora');
+await perdu.fill('#code-saisi', 'ZZZZZ');
+await perdu.click('#btn-rejoindre');
+await perdu.waitForSelector('#statut:not([hidden])', { timeout: 5000 });
+const enAttente = await perdu.locator('#btn-rejoindre.occupe').count();
+console.log('pendant la recherche — statut :', (await perdu.textContent('#statut')).trim(),
+            '| bouton occupé :', enAttente === 1);
+if (!enAttente) throw new Error("le bouton ne montre pas qu'il travaille");
+await perdu.waitForSelector('#diagnostic:not([hidden])', { timeout: 45000 });
+const diag = (await perdu.textContent('#diagnostic')).replace(/\s+/g, ' ').trim();
+console.log('diagnostic :', diag.slice(0, 95), '…');
+if (!diag.includes("aucune table n'est ouverte")) throw new Error('mauvaise cause diagnostiquée');
+if (!(await perdu.locator('#diagnostic [data-reessayer]').count())) throw new Error('pas de bouton Réessayer');
+if (await perdu.locator('#btn-rejoindre.occupe').count()) throw new Error('le bouton est resté bloqué');
+if (process.env.CAPTURES) await perdu.screenshot({ path: process.env.CAPTURES + '/diagnostic.png' });
+console.log('diagnostic du code inconnu ✓');
 
 // Planche de toutes les cartes, pour juger les dessins d'un coup d'œil.
 const galerie = await page('galerie', { width: 900, height: 760 });

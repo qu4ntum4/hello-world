@@ -34,7 +34,10 @@
       <button id="btn-rejoindre" class="bouton" type="submit">Rejoindre</button>
     </form>
 
+    <div id="statut" class="statut" hidden><i class="rotule" aria-hidden="true"></i><span></span></div>
     <p id="accueil-erreur" class="erreur" role="alert"></p>
+    <div id="diagnostic" class="diagnostic" hidden></div>
+    <p id="relais-actif" class="relais" hidden></p>
     <button id="btn-regles-accueil" class="lien-discret">Comment on joue ?</button>
   </div>
 </section>
@@ -43,7 +46,7 @@
 <section id="salon" class="ecran">
   <header class="barre">
     <button id="btn-quitter-salon" class="icone" aria-label="Quitter">←</button>
-    <span class="barre-titre">Salon</span>
+    <span class="barre-titre">Salon <i id="etat-table" class="temoin" title="Table en ligne"></i></span>
     <button id="btn-regles-salon" class="icone" aria-label="Règles">?</button>
   </header>
 

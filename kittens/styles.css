@@ -96,6 +96,46 @@ input[type=text]:focus { border-color: #6a5bb5; box-shadow: 0 0 0 3px rgba(127, 
 .ligne-code .bouton { width: auto; flex: 0 0 auto; }
 
 .erreur { color: #ff9aa8; font-size: 14px; min-height: 20px; margin: 12px 0 0; }
+
+/* Attente : un rendez-vous pair à pair prend une poignée de secondes, et
+   l'écran doit le dire plutôt que de rester muet. */
+.statut {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 14px; font-size: 14px; color: var(--doux);
+}
+.statut[hidden] { display: none; }
+.rotule {
+  width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%;
+  border: 2px solid var(--bord); border-top-color: var(--vif-2);
+  animation: tourne .8s linear infinite;
+}
+@keyframes tourne { to { transform: rotate(1turn); } }
+.bouton.occupe { position: relative; color: transparent; }
+.bouton.occupe::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px;
+  border-radius: 50%; border: 2px solid rgba(0, 0, 0, .25); border-top-color: #24101a;
+  animation: tourne .8s linear infinite;
+}
+
+.diagnostic {
+  margin-top: 12px; padding: 14px 16px; border-radius: var(--r); text-align: left;
+  background: var(--nuit-2); border: 1px solid var(--bord); font-size: 13.5px; color: #d6cef0;
+}
+.diagnostic[hidden] { display: none; }
+.diagnostic ul { margin: 8px 0 0; padding-left: 18px; }
+.diagnostic li { margin-bottom: 7px; }
+.diagnostic code { background: var(--nuit-3); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+.diagnostic .bouton { margin-top: 12px; }
+.relais { font-size: 12.5px; color: var(--doux); margin: 12px 0 0; }
+.relais[hidden] { display: none; }
+.relais button { text-decoration: underline; color: var(--vif-2); }
+
+.temoin {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--menthe); vertical-align: middle; margin-left: 4px;
+}
+.temoin.hors-ligne { background: var(--vif-2); animation: clignote 1s ease-in-out infinite; }
+@keyframes clignote { 50% { opacity: .25; } }
 .lien-discret { color: var(--doux); text-decoration: underline; font-size: 14px; margin-top: 10px; }
 
 /* ————————————————————————————————————————— salon */
