@@ -204,11 +204,12 @@ async function creer() {
   try {
     const h = await R.heberger({
       surMessage: traiter,
-      surEtat: (e) => {
+      surEtat: (e, ice) => {
         const t = $('#etat-table');
         t.classList.toggle('hors-ligne', e === 'hors-ligne');
         t.title = e === 'hors-ligne' ? 'Table déconnectée — reconnexion…' : 'Table en ligne';
         if (e === 'hors-ligne') V.bandeau('Table déconnectée du service de rendez-vous — reconnexion…', 4000);
+        if (e === 'liaison-ratee') appelRate(ice);
       },
       surDepart: (cle) => {
         const j = joueurParCle(cle);
@@ -265,6 +266,34 @@ async function rejoindre(codeBrut) {
     libere($('#btn-rejoindre'), 'Rejoindre');
     echouer(e, code);
   }
+}
+
+// L'hôte doit savoir qu'un joueur a frappé sans pouvoir entrer, et voir ses
+// propres adresses : sans ça, chacun regarde une moitié du problème.
+function appelRate(ice) {
+  const c = (ice && ice.candidats) || {};
+  const d = (ice && ice.distants) || {};
+  const z = $('#salon-alerte');
+  z.hidden = false;
+  const cause = !((d.host || 0) + (d.srflx || 0) + (d.relay || 0))
+    ? "Ce joueur ne nous a envoyé aucune adresse : le blocage est <b>de son côté</b>. Qu'il lance « Réglages réseau → Tester ma connexion »."
+    : !c.relay && !d.relay
+      ? "Vous avez chacun une adresse, mais <b>aucun relais</b> des deux côtés. Vos routeurs n'autorisent pas de chemin direct : il faut un relais, réglé dans « Réglages réseau »."
+      : "Des adresses des deux côtés, mais aucun couple ne fonctionne. Un relais de secours lèvera le blocage.";
+  const contenu = `<b>Un joueur a essayé de rejoindre, sans y parvenir.</b>
+    <ul><li>${cause}</li></ul>
+    <p class="technique">Vos adresses — locales ${c.host || 0}, publiques ${c.srflx || 0}, relayées ${c.relay || 0}<br>
+    Les siennes — locales ${d.host || 0}, publiques ${d.srflx || 0}, relayées ${d.relay || 0}</p>`;
+  z.innerHTML = contenu;
+  // La partie peut avoir commencé : l'hôte n'est alors plus devant le salon.
+  if (!$('#salon').classList.contains('actif')) {
+    V.modale(`<h2>Connexion refusée</h2><div class="diagnostic">${contenu}</div>
+      <button class="bouton" data-fermer>Compris</button>`, (m) => {
+      m.querySelector('[data-fermer]').addEventListener('click', V.fermerModale);
+    });
+  }
+  V.bandeau("Un joueur n'a pas réussi à se connecter.", 6000);
+  S.jouer('nope');
 }
 
 // Une panne pair à pair a plusieurs causes très différentes ; les confondre

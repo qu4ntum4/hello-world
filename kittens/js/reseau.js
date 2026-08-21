@@ -151,8 +151,17 @@ export async function heberger({ surMessage, surDepart, surErreur, surEtat = () 
 
   peer.on('connection', (conn) => {
     const cle = conn.peer;
+    // Un appel qui n'aboutit pas était invisible pour l'hôte : il attendait un
+    // joueur qui, lui, voyait un échec. Il faut le lui dire, et avec ses
+    // propres adresses — c'est l'autre moitié du diagnostic.
+    const rapport = sonderIce(conn);
+    const minuteurAppel = setTimeout(() => {
+      if (!conn.open) { surEtat('liaison-ratee', rapport()); try { conn.close(); } catch {} }
+    }, 25000);
     conn.on('open', () => {
+      clearTimeout(minuteurAppel);
       liens.set(cle, { conn, vuLe: Date.now() });
+      surEtat('en-ligne');
     });
     conn.on('data', (msg) => {
       const l = liens.get(cle);
@@ -160,8 +169,8 @@ export async function heberger({ surMessage, surDepart, surErreur, surEtat = () 
       if (msg && msg.t === 'ping') { try { conn.send({ t: 'pong' }); } catch {} return; }
       surMessage(cle, msg);
     });
-    conn.on('close', () => { liens.delete(cle); surDepart(cle); });
-    conn.on('error', () => { liens.delete(cle); surDepart(cle); });
+    conn.on('close', () => { clearTimeout(minuteurAppel); liens.delete(cle); surDepart(cle); });
+    conn.on('error', () => { clearTimeout(minuteurAppel); liens.delete(cle); surDepart(cle); });
   });
 
   peer.on('error', (e) => {

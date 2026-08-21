@@ -263,6 +263,15 @@ if (!/Celles de l'hôte — locales [1-9]/.test(bloque)) throw new Error("la son
 if (process.env.CAPTURES) await sourd.screenshot({ path: process.env.CAPTURES + '/bloque.png' });
 console.log('diagnostic de la liaison bloquée ✓');
 
+// L'hôte, lui aussi, doit voir qu'un joueur a frappé sans pouvoir entrer.
+await A.waitForFunction(() => document.querySelector('#salon-alerte').textContent.length > 20,
+  null, { timeout: 40000 });
+const alerte = (await A.textContent('#salon-alerte')).replace(/\s+/g, ' ').trim();
+console.log('alerte côté hôte :', alerte.slice(0, 90), '…');
+if (!alerte.includes('essayé de rejoindre')) throw new Error("l'hôte n'est pas averti de l'appel raté");
+if (!alerte.includes('Les siennes')) throw new Error("l'hôte ne voit pas les adresses du joueur");
+console.log("l'hôte est averti de l'appel raté ✓");
+
 // Planche de toutes les cartes, pour juger les dessins d'un coup d'œil.
 const galerie = await page('galerie', { width: 900, height: 760 });
 await galerie.goto(BASE);
