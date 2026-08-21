@@ -83,14 +83,35 @@ if (mains.some((n) => n !== 8)) throw new Error('main initiale incorrecte');
 const fuite = await B.evaluate(() => JSON.stringify(window.__etat || {}));
 if (fuite.includes('"main"') && fuite.split('"main"').length > 2) throw new Error('fuite de main');
 
+// Tirer un chaton explosif ouvre une modale : on la joue, ce qui couvre au
+// passage l'écran de désamorçage et le choix de la position.
+let desamorcages = 0;
+async function repondreAuxModales(p) {
+  if (!(await p.locator('#voile:not([hidden])').count())) return;
+  if (await p.locator('[data-desamorcer]').count()) {
+    await p.click('[data-desamorcer]');
+    await p.waitForSelector('#positions .bouton', { timeout: 5000 });
+    await p.locator('#positions .bouton').last().click();   // « au hasard »
+    desamorcages += 1;
+  } else if (await p.locator('[data-exploser]').count()) {
+    await p.click('[data-exploser]');
+  } else if (await p.locator('[data-fermer]').count()) {
+    await p.click('[data-fermer]');
+  }
+  await p.waitForTimeout(300);
+}
+
 // Quelques tours : celui qui a la main pioche.
 for (let i = 0; i < 8; i++) {
   for (const p of [A, B]) {
+    await repondreAuxModales(p);
     const actif = await p.locator('#pioche.jouable').count();
-    if (actif) { await p.click('#pioche'); await p.waitForTimeout(350); }
+    if (actif) { await p.click('#pioche'); await p.waitForTimeout(400); }
+    await repondreAuxModales(p);
   }
   await A.waitForTimeout(200);
 }
+console.log('chatons désamorcés pendant la partie :', desamorcages);
 const pioche = Number(await A.textContent('#pioche-compte'));
 console.log('cartes restantes dans la pioche :', pioche);
 if (pioche >= 37) throw new Error('la pioche ne descend pas');
@@ -104,6 +125,21 @@ await large.waitForSelector('#table.actif', { timeout: 20000 });
 const spect = await large.textContent('#main-cartes');
 console.log('arrivée tardive :', spect.trim().slice(0, 40));
 if (process.env.CAPTURES) await large.screenshot({ path: process.env.CAPTURES + '/bureau.png' });
+
+// La fiche d'une carte : la pastille doit expliquer ce qu'elle fait sans
+// sélectionner la carte.
+await repondreAuxModales(A);
+const premiere = A.locator('#main-cartes .carte').first();
+const nomCarte = (await premiere.locator('.carte-nom').textContent()).trim();
+await premiere.locator('.carte-info').click();
+await A.waitForSelector('#modale h2', { timeout: 5000 });
+const fiche = (await A.textContent('#modale')).replace(/\s+/g, ' ').trim();
+console.log('fiche de carte :', fiche.slice(0, 80), '…');
+if (!fiche.includes(nomCarte)) throw new Error('la fiche ne parle pas de la bonne carte');
+if (await A.locator('#main-cartes .carte.choisie').count()) throw new Error('la pastille a sélectionné la carte');
+if (process.env.CAPTURES) await A.screenshot({ path: process.env.CAPTURES + '/fiche.png' });
+await A.click('#modale [data-fermer]');
+console.log('fiche au toucher ✓');
 
 // Panneau des règles : toutes les cartes doivent se dessiner.
 await A.click('#btn-regles-table');
@@ -181,6 +217,27 @@ if (!(await perdu.locator('#diagnostic [data-reessayer]').count())) throw new Er
 if (await perdu.locator('#btn-rejoindre.occupe').count()) throw new Error('le bouton est resté bloqué');
 if (process.env.CAPTURES) await perdu.screenshot({ path: process.env.CAPTURES + '/diagnostic.png' });
 console.log('diagnostic du code inconnu ✓');
+
+// Liaison impossible : on empêche l'invité de terminer la négociation. La page
+// ne doit surtout pas conclure « code inconnu » — la table, elle, existe.
+const ctxSourd = await nav.newContext({ viewport: mobile });
+await ctxSourd.addInitScript(() => {
+  // La réponse de l'hôte n'est jamais appliquée : le canal ne s'ouvrira pas.
+  RTCPeerConnection.prototype.setRemoteDescription = () => new Promise(() => {});
+});
+const sourd = await ctxSourd.newPage();
+sourd.on('pageerror', (e) => soucis.push(`[sourd] exception: ${e.message}`));
+await sourd.goto(BASE + '#' + code);
+await sourd.fill('#pseudo', 'Eve');
+await sourd.click('#btn-rejoindre');
+await sourd.waitForSelector('#diagnostic:not([hidden])', { timeout: 60000 });
+const bloque = (await sourd.textContent('#diagnostic')).replace(/\s+/g, ' ').trim();
+console.log('diagnostic liaison :', bloque.slice(0, 100), '…');
+if (!bloque.includes("ne s'ouvre pas")) throw new Error('liaison bloquée mal diagnostiquée — reçu : ' + bloque.slice(-90));
+if (!bloque.includes('Adresses obtenues')) throw new Error('le relevé ICE manque');
+if (!/locales [1-9]/.test(bloque)) throw new Error('aucune adresse locale relevée : la sonde ne lit rien');
+if (process.env.CAPTURES) await sourd.screenshot({ path: process.env.CAPTURES + '/bloque.png' });
+console.log('diagnostic de la liaison bloquée ✓');
 
 // Planche de toutes les cartes, pour juger les dessins d'un coup d'œil.
 const galerie = await page('galerie', { width: 900, height: 760 });

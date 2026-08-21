@@ -201,7 +201,7 @@ export const DESCRIPTIONS = {
 };
 
 // Élément DOM d'une carte.
-export function elementCarte(type, { taille = 'moyenne', id = null } = {}) {
+export function elementCarte(type, { taille = 'moyenne', id = null, info = false } = {}) {
   const s = STYLES[type] || STYLES.nope;
   const el = document.createElement('div');
   el.className = `carte carte--${taille}`;
@@ -211,6 +211,14 @@ export function elementCarte(type, { taille = 'moyenne', id = null } = {}) {
   if (id) el.dataset.carte = id;
   el.dataset.type = type;
   el.innerHTML = `<div class="carte-image">${illustration(type)}</div><div class="carte-nom">${nomCarte(type)}</div>`;
+  if (info) {
+    const b = document.createElement('button');
+    b.className = 'carte-info';
+    b.type = 'button';
+    b.textContent = 'i';
+    b.setAttribute('aria-label', `Que fait ${nomCarte(type)} ?`);
+    el.appendChild(b);
+  }
   return el;
 }
 

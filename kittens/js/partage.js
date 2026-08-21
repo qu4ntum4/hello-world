@@ -4,8 +4,12 @@
 export function lienPartie(code) {
   const u = new URL(location.href);
   u.hash = code;
-  const relais = new URLSearchParams(u.search).get('relais');
-  u.search = relais ? '?relais=' + encodeURIComponent(relais) : '';
+  // Les réglages de connexion voyagent avec l'invitation : les deux camps
+  // doivent passer par les mêmes services pour se trouver.
+  const avant = new URLSearchParams(u.search);
+  const apres = new URLSearchParams();
+  for (const cle of ['relais', 'turn']) if (avant.get(cle)) apres.set(cle, avant.get(cle));
+  u.search = apres.toString() ? '?' + apres.toString() : '';
   return u.toString();
 }
 

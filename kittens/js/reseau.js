@@ -29,8 +29,40 @@ export function oublierRelais() {
   localStorage.removeItem('chatons.relais');
 }
 
+// Deux navigateurs derrière des box grand public trouvent presque toujours un
+// chemin direct avec du STUN seul. Mais dès qu'un NAT symétrique, un VPN ou un
+// pare-feu d'entreprise s'en mêle, il n'existe aucun chemin direct : il faut un
+// relais TURN, sans quoi la liaison ne peut tout simplement pas s'ouvrir.
+// Le relais ne voit passer que du chiffré — le canal est protégé de bout en
+// bout par DTLS — mais il voit passer les paquets, contrairement au service de
+// rendez-vous. D'où la possibilité de mettre le sien.
+const TURN_PUBLIC = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
+// ?turn=turn:mon.serveur:3478|utilisateur|secret — mémorisé et transmis dans le
+// lien d'invitation, comme le service de rendez-vous.
+export function turnChoisi() {
+  return new URLSearchParams(location.search).get('turn') || localStorage.getItem('chatons.turn') || '';
+}
+
+export function oublierTurn() { localStorage.removeItem('chatons.turn'); }
+
+export function serveursIce() {
+  const brut = turnChoisi();
+  if (!brut) return TURN_PUBLIC;
+  localStorage.setItem('chatons.turn', brut);
+  const [urls, username, credential] = brut.split('|');
+  const perso = username ? { urls, username, credential } : { urls };
+  return [TURN_PUBLIC[0], perso];
+}
+
 function optionsPair() {
-  const o = { debug: 0 };
+  const o = { debug: 0, config: { iceServers: serveursIce(), sdpSemantics: 'unified-plan' } };
   const brut = relaisChoisi();
   if (!brut) return o;
   try {
@@ -56,7 +88,8 @@ function attendreOuverture(peer) {
 export function messageErreur(e) {
   switch (e && e.type) {
     case 'peer-unavailable': return "Aucune table n'est ouverte sous ce code.";
-    case 'lien-bloque': return "La table a été trouvée, mais la liaison directe entre vos deux navigateurs ne s'établit pas.";
+    case 'lien-bloque': case 'webrtc':
+      return "La table a été trouvée, mais la liaison entre vos deux navigateurs ne s'établit pas.";
     case 'unavailable-id':   return 'Ce code est déjà pris, on en tire un autre.';
     case 'browser-incompatible': return "Ce navigateur ne gère pas le WebRTC. Essayez Chrome, Firefox, Safari ou Edge à jour.";
     case 'network': case 'server-error': case 'socket-error': case 'socket-closed':
@@ -135,6 +168,34 @@ export async function heberger({ surMessage, surDepart, surErreur, surEtat = () 
   };
 }
 
+// Quand rien ne s'ouvre, la nature des adresses rassemblées dit où ça coince :
+// pas de « srflx », le STUN est bloqué ; pas de « relay », aucun relais TURN
+// n'est joignable.
+function sonderIce(conn) {
+  const vus = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+  let etat = 'jamais démarré';
+  let branche = false;
+
+  const brancher = () => {
+    const pc = conn.peerConnection;
+    if (!pc || branche) return branche;
+    branche = true;
+    etat = pc.iceConnectionState;
+    pc.addEventListener('icecandidate', (ev) => {
+      const t = ev.candidate && ev.candidate.candidate && / typ (\w+)/.exec(ev.candidate.candidate);
+      if (t && vus[t[1]] !== undefined) vus[t[1]] += 1;
+    });
+    pc.addEventListener('iceconnectionstatechange', () => { etat = pc.iceConnectionState; });
+    return true;
+  };
+
+  if (!brancher()) {
+    const t = setInterval(() => { if (brancher()) clearInterval(t); }, 120);
+    setTimeout(() => clearInterval(t), 8000);
+  }
+  return () => ({ candidats: { ...vus }, etat });
+}
+
 // ————————————————————————————————————————————————————————————— invité
 
 // Se connecte à l'hôte et se rebranche tout seul si le lien saute.
@@ -161,12 +222,14 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
 
     surEtat(etabli ? 'reconnexion' : 'appel', { tentative: tentatives, total: MAX_TENTATIVES });
     conn = peer.connect(idPair(code), { reliable: true });
+    const rapportIce = sonderIce(conn);
 
-    // Le service a bien transmis notre appel, mais la liaison directe ne
-    // s'ouvre pas : ce n'est pas la même panne qu'un code inconnu.
+    // Le service a bien transmis notre appel, mais la liaison ne s'ouvre pas :
+    // ce n'est pas la même panne qu'un code inconnu. On laisse le temps à un
+    // relais TURN en TCP/443 de s'établir, c'est le chemin le plus lent.
     const minuteurOuverture = setTimeout(() => {
-      if (conn && !conn.open) { try { conn.close(); } catch {} echec({ type: 'lien-bloque' }); }
-    }, 15000);
+      if (conn && !conn.open) { try { conn.close(); } catch {} echec({ type: 'lien-bloque', ice: rapportIce() }); }
+    }, 22000);
 
     conn.on('open', () => {
       clearTimeout(minuteurOuverture);
@@ -181,7 +244,14 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
     conn.on('error', () => {});
     peer.on('error', (e) => {
       clearTimeout(minuteurOuverture);
-      if (etabli) rebrancher(); else echec(e);
+      if (etabli) return rebrancher();
+      // PeerJS range sous « webrtc » l'échec de la négociation elle-même :
+      // la table a répondu, c'est le canal direct qui refuse de se monter.
+      // Le confondre avec une panne de réseau envoie chercher au mauvais endroit.
+      const cause = e && (e.type === 'webrtc' || e.type === 'negotiation-failed')
+        ? { type: 'lien-bloque', ice: rapportIce() }
+        : e;
+      echec(cause);
     });
   }
 
@@ -191,8 +261,9 @@ export async function rejoindre(code, { bonjour, surMessage, surEtat, surErreur 
     if (!vivant) return;
     if (etabli) return rebrancher();
     // Avant la première connexion : on retente le code quelques fois.
-    const vautLaPeine = e && (e.type === 'peer-unavailable' || e.type === 'lien-bloque');
-    if (vautLaPeine && tentatives < MAX_TENTATIVES) {
+    // Un registre qui n'a pas encore vu la table, ça se retente ; une liaison
+    // qui ne s'ouvre pas, non — autant rendre la main tout de suite.
+    if (e && e.type === 'peer-unavailable' && tentatives < MAX_TENTATIVES) {
       surEtat('nouvelle-tentative', { tentative: tentatives, total: MAX_TENTATIVES });
       setTimeout(brancher, 1600);
       return;

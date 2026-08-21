@@ -284,12 +284,26 @@ function echouer(e, code) {
         <li><b>Le code a-t-il changé ?</b> Chaque clic sur « Créer une partie » en tire un nouveau. Reprenez celui affiché <em>en ce moment</em> chez l'hôte.</li>
         <li>${ouRelais}</li>
       </ul>`;
-  } else if (e && e.type === 'lien-bloque') {
-    corps = `<b>La table existe, mais vos deux navigateurs n'arrivent pas à se parler en direct.</b>
-      <ul>
-        <li>C'est presque toujours un réseau d'entreprise, un VPN ou un pare-feu qui bloque le WebRTC.</li>
-        <li>Essayez en partage de connexion depuis un téléphone, des deux côtés.</li>
-      </ul>`;
+  } else if (e && (e.type === 'lien-bloque' || e.type === 'webrtc')) {
+    const c = (e.ice && e.ice.candidats) || {};
+    const etat = (e.ice && e.ice.etat) || 'inconnu';
+    const pistes = [];
+    if (!c.srflx && !c.relay) {
+      pistes.push("Votre navigateur n'a obtenu <b>aucune adresse joignable de l'extérieur</b> : STUN et les relais sont bloqués tous les deux. C'est un pare-feu strict, un VPN, ou un réseau d'entreprise.");
+    } else if (!c.relay) {
+      pistes.push("Aucun <b>relais</b> n'a répondu. Sans lui, il faut un chemin direct — impossible derrière certains routeurs.");
+    } else {
+      pistes.push("Un relais a bien répondu de votre côté ; c'est donc <b>chez l'hôte</b> que le passage est bloqué. Faites-lui recharger la page et recréer une table.");
+    }
+    pistes.push('Le plus sûr pour trancher : essayez en partage de connexion depuis un téléphone, des deux côtés.');
+    corps = `<b>La table existe, mais la liaison entre vos deux navigateurs ne s'ouvre pas.</b>
+      <ul>${pistes.map((x) => `<li>${x}</li>`).join('')}</ul>
+      <p class="technique">Adresses obtenues — locales ${c.host || 0}, publiques ${c.srflx || 0}, relayées ${c.relay || 0} · état ICE : ${V.echapper(etat)}${R.turnChoisi() ? ' · relais personnalisé' : ''}</p>`;
+  } else if (e && e.type === 'browser-incompatible') {
+    corps = `<b>Ce navigateur ne sait pas établir de liaison directe.</b>
+      <ul><li>Il faut Chrome, Firefox, Safari ou Edge à jour. Certains navigateurs intégrés
+      (celui d'une application de messagerie, par exemple) désactivent le WebRTC : ouvrez le
+      lien dans votre vrai navigateur.</li></ul>`;
   } else {
     corps = `<b>Le service de rendez-vous est injoignable.</b>
       <ul>
@@ -297,6 +311,8 @@ function echouer(e, code) {
         <li>${ouRelais}</li>
       </ul>`;
   }
+  // De quoi nommer la panne si elle doit être rapportée.
+  corps += `<p class="technique">Code technique : ${V.echapper((e && e.type) || 'inconnu')}</p>`;
   diagnostic(corps + '<button class="bouton" data-reessayer>Réessayer</button>');
   $('#diagnostic').querySelector('[data-reessayer]').addEventListener('click', () => {
     diagnostic('');
@@ -441,15 +457,23 @@ function brancher() {
     erreurAccueil(`Partie ${codeUrl} — entrez votre prénom et rejoignez.`, true);
   }
 
-  const relais = R.relaisChoisi();
-  if (relais) {
+  const perso = [
+    R.relaisChoisi() && ['Service de rendez-vous', R.relaisChoisi(), R.oublierRelais],
+    R.turnChoisi() && ['Relais de secours', R.turnChoisi(), R.oublierTurn],
+  ].filter(Boolean);
+  if (perso.length) {
     const z = $('#relais-actif');
     z.hidden = false;
-    z.innerHTML = `Service de rendez-vous personnalisé : <code>${V.echapper(relais)}</code> — `;
-    const b = document.createElement('button');
-    b.textContent = 'revenir au service public';
-    b.addEventListener('click', () => { R.oublierRelais(); location.search = ''; });
-    z.appendChild(b);
+    for (const [nom, valeur, oublier] of perso) {
+      const ligne = document.createElement('span');
+      ligne.innerHTML = `${nom} personnalisé : <code>${V.echapper(valeur.split('|')[0])}</code> — `;
+      const b = document.createElement('button');
+      b.textContent = 'revenir au réglage public';
+      b.addEventListener('click', () => { oublier(); location.search = ''; });
+      ligne.appendChild(b);
+      ligne.appendChild(document.createElement('br'));
+      z.appendChild(ligne);
+    }
   }
 
   $('#btn-creer').addEventListener('click', () => { S.reveiller(); creer(); });

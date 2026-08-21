@@ -99,7 +99,7 @@ export function rendreTable(etat, cb) {
   const def = $('#defausse');
   def.innerHTML = '';
   const dessus = etat.defausse[etat.defausse.length - 1];
-  if (dessus) def.appendChild(elementCarte(dessus.type));
+  if (dessus) def.appendChild(carteAvecFiche(dessus.type));
   else def.innerHTML = '<span class="pile-vide">défausse</span>';
 
   // annonce
@@ -131,7 +131,7 @@ export function rendreTable(etat, cb) {
     main.innerHTML = '<p class="indice">Vous suivez la partie en spectateur — vous jouerez la prochaine.</p>';
   } else {
     for (const c of cartes) {
-      const el = elementCarte(c.type, { id: c.id });
+      const el = carteAvecFiche(c.type, { id: c.id });
       if (choisies.has(c.id)) el.classList.add('choisie');
       el.addEventListener('click', () => {
         if (choisies.has(c.id)) choisies.delete(c.id); else choisies.add(c.id);
@@ -184,7 +184,7 @@ function rendreActions(etat, cb, { monTour, spectateur, moi }) {
   if (monTour) {
     barre.appendChild(bouton(`Piocher et finir le tour`, 'bouton bouton--majeur', () => cb.onPiocher()));
   } else {
-    barre.innerHTML = '<p class="indice">Touchez vos cartes pour préparer un coup.</p>';
+    barre.innerHTML = '<p class="indice">Touchez vos cartes pour préparer un coup — ou le <b>i</b> pour savoir ce qu\'une carte fait.</p>';
   }
 }
 
@@ -203,6 +203,36 @@ export function validerSelection(types) {
 
 export function selection() { return [...choisies]; }
 export function viderSelection() { choisies.clear(); }
+
+// Une carte qui explique ce qu'elle fait : la pastille ouvre sa fiche sans
+// déclencher la sélection.
+function carteAvecFiche(type, options = {}) {
+  const el = elementCarte(type, { ...options, info: true });
+  el.querySelector('.carte-info').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    modaleCarte(type);
+  });
+  return el;
+}
+
+export function modaleCarte(type) {
+  const def = CATALOGUE[type] || {};
+  const combos = def.chat
+    ? `<p>Seule, elle ne fait rien. <b>Deux identiques</b> : vous volez une carte au hasard à un adversaire.
+       <b>Trois identiques</b> : vous nommez la carte que vous exigez. <b>Cinq cartes toutes différentes</b> :
+       vous repêchez ce que vous voulez dans la défausse.</p>`
+    : `<p class="technique">Comme n'importe quelle carte, elle compte aussi dans les combinaisons :
+       deux identiques pour voler au hasard, trois pour réclamer une carte précise,
+       cinq toutes différentes pour fouiller la défausse.</p>`;
+  modale(`<h2>${nomCarte(type)}</h2>
+    <div class="choix-cartes" id="fiche-carte" style="justify-content:center"></div>
+    ${def.chat ? '' : `<p>${DESCRIPTIONS[type] || ''}</p>`}
+    ${combos}
+    <button class="bouton" data-fermer>Fermer</button>`, (m) => {
+    m.querySelector('#fiche-carte').appendChild(elementCarte(type, { taille: 'grande' }));
+    m.querySelector('[data-fermer]').addEventListener('click', fermerModale);
+  });
+}
 
 function bouton(texte, classe, action) {
   const b = document.createElement('button');
